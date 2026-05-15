@@ -17,98 +17,108 @@ namespace Cli
             ".cpp",
         };
 
-        public override IEnumerable<string> Run (ToolContext context)
+        public override IEnumerable<string> Run(ToolContext context)
         {
-            var files = context.InputFiles.Select (Path.GetFullPath).ToList ();
+            var files = context.InputFiles.Select(Path.GetFullPath).ToList();
             if (files.Count == 0)
-                return Enumerable.Empty<string> ();
+                return Enumerable.Empty<string>();
 
             var srcDir = Environment.CurrentDirectory;
-            var buildDir = Path.GetTempPath ();
+            var buildDir = Path.GetTempPath();
 
             var iswin = Environment.OSVersion.Platform == PlatformID.Win32NT;
 
             var outputAssembly = true;
 
             var args = new List<string> {
-                "-g", "-O1", "-S", "-emit-llvm", "-frtti"
+                "-g", "-O0", "-S", "-emit-llvm", "-frtti"
+                // -O0 prevents: relative lookup tables, freeze instruction, dereferenceable_or_null
+                // which are LLVM 14 features that Iril's IR parser doesn't support yet
             };
 
             var argsHasStd = false;
-            foreach (var e in context.ExtraArguments) {
-                switch (e) {
+            foreach (var e in context.ExtraArguments)
+            {
+                switch (e)
+                {
                     case "-c":
                         outputAssembly = false;
-                        args.Add ("-o");
-                        args.Add (context.OutputFile);
+                        args.Add("-o");
+                        args.Add(context.OutputFile);
                         break;
                     case var _ when e.StartsWith("-O"):
                         // Optimization is already set
                         break;
                     case var _ when e.StartsWith("-std"):
                         argsHasStd = true;
-                        args.Add (e);
+                        args.Add(e);
                         break;
-                    case var _ when e.StartsWith ("-I"): {
-                            var orig = e.Substring (2);
-                            var fix = Path.GetFullPath (orig, srcDir);
-                            args.Add ("-I" + fix);
+                    case var _ when e.StartsWith("-I"):
+                        {
+                            var orig = e.Substring(2);
+                            var fix = Path.GetFullPath(orig, srcDir);
+                            args.Add("-I" + fix);
                         }
                         break;
                     default:
-                        args.Add (e);
+                        args.Add(e);
                         break;
                 }
             }
 
-            if (!argsHasStd) {
-                if (context.InputFiles.Any(x => cppExtensions.Contains (Path.GetExtension (x))))
-                    args.Add ("-std=c++17");
+            if (!argsHasStd)
+            {
+                if (context.InputFiles.Any(x => cppExtensions.Contains(Path.GetExtension(x))))
+                    args.Add("-std=c++17");
                 else
-                    args.Add ("-std=c99");
+                    args.Add("-std=c99");
             }
 
             if (!iswin)
-                args.Add ("-fpic");
+                args.Add("-fpic");
 
-            args.AddRange (files);
+            args.AddRange(files);
             var clangFileCount = files.Count;
 
-            args.Insert (0, "-I" + Environment.CurrentDirectory);
+            args.Insert(0, "-I" + Environment.CurrentDirectory);
 
-            var outFiles = new List<string> ();
+            var outFiles = new List<string>();
 
-            var clangResult = clangFileCount > 0 ? Run (buildDir, "clang", args.ToArray ()) : 0;
+            var clangResult = clangFileCount > 0 ? Run(buildDir, "clang-14", args.ToArray()) : 0;
 
-            if (clangResult == 0) {
-                if (outputAssembly) {
-                    foreach (var f in files) {
-                        var outPath = GetOutFilePath (buildDir, f);
+            if (clangResult == 0)
+            {
+                if (outputAssembly)
+                {
+                    foreach (var f in files)
+                    {
+                        var outPath = GetOutFilePath(buildDir, f);
                         //Console.WriteLine ($"OUTLL = {outPath}");
-                        outFiles.Add (outPath);
+                        outFiles.Add(outPath);
                     }
                 }
-                else {
+                else
+                {
                 }
             }
 
             return outFiles;
         }
 
-        static string GetOutFilePath (string buildDir, string f)
+        static string GetOutFilePath(string buildDir, string f)
         {
-            var outName = Path.ChangeExtension (Path.GetFileName (f), ".ll");
-            var outPath = Path.Combine (buildDir, outName);
+            var outName = Path.ChangeExtension(Path.GetFileName(f), ".ll");
+            var outPath = Path.Combine(buildDir, outName);
             return outPath;
         }
 
-        protected override string GetWindowsInstructions () =>
+        protected override string GetWindowsInstructions() =>
             @"To install clang, follow these steps:
     1. Install Chocolately from https://chocolatey.org/install
     2. Install LLVM by typing `choco install llvm`
     3. Test that clang is installed by typing `clang -v`";
 
-        protected override string GetMacInstructions () =>
+        protected override string GetMacInstructions() =>
             @"To install clang, follow these steps:
     1. Install Xcode from the App Store
     2. Install LLVM by typing `xcode-select --install`

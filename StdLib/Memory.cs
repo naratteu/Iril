@@ -13,19 +13,20 @@ namespace StdLib
     [DllExport]
     public static class Memory
     {
-        static unsafe void* __memmove_chk (void* dest, void* src, size_t len, size_t destlen)
+        static unsafe void* __memmove_chk(void* dest, void* src, size_t len, size_t destlen)
         {
             if (destlen < len)
-                throw new Exception ("Buffer overlow");
-            return memmove (dest, src, len);
+                throw new Exception("Buffer overlow");
+            return memmove(dest, src, len);
         }
 
-        public static unsafe void* memmove (void* dest, void* src, size_t len)
+        public static unsafe void* memmove(void* dest, void* src, size_t len)
         {
             byte* d = (byte*)dest;
             byte* s = (byte*)src;
             byte* r = d;
-            if (s < d) {
+            if (s < d)
+            {
                 d += len;
                 s += len;
                 while (len-- != 0)
@@ -37,7 +38,7 @@ namespace StdLib
             return r;
         }
 
-        static unsafe void* memchr (byte* s, int c, size_t n)
+        static unsafe void* memchr(byte* s, int c, size_t n)
         {
             while (n-- != 0)
                 if (*s++ == (byte)c)
@@ -45,15 +46,15 @@ namespace StdLib
             return null;
         }
 
-        static unsafe byte* __memset_chk (byte* dstpp, int c, size_t len, size_t dstlen)
+        static unsafe byte* __memset_chk(byte* dstpp, int c, size_t len, size_t dstlen)
         {
             if (dstlen < len)
-                throw new Exception ("Buffer overlow");
+                throw new Exception("Buffer overlow");
 
-            return memset (dstpp, c, len);
+            return memset(dstpp, c, len);
         }
 
-        static unsafe byte* memset (byte* s, int c, size_t n)
+        static unsafe byte* memset(byte* s, int c, size_t n)
         {
             byte* r = s, end = s + n;
             while (r < end)
@@ -61,15 +62,15 @@ namespace StdLib
             return s;
         }
 
-        static unsafe byte* __memcpy_chk (byte* dstpp, byte* srcpp, size_t len, size_t dstlen)
+        static unsafe byte* __memcpy_chk(byte* dstpp, byte* srcpp, size_t len, size_t dstlen)
         {
             if (dstlen < len)
-                throw new Exception ("Buffer overlow");
+                throw new Exception("Buffer overlow");
 
-            return memcpy (dstpp, srcpp, len);
+            return memcpy(dstpp, srcpp, len);
         }
 
-        static unsafe byte* memcpy (byte* dst, byte* src, size_t n)
+        static unsafe byte* memcpy(byte* dst, byte* src, size_t n)
         {
             byte* ret = dst;
             while (n-- != 0)
@@ -77,7 +78,7 @@ namespace StdLib
             return ret;
         }
 
-        static unsafe int memcmp (byte* s1, byte* s2, size_t n)
+        static unsafe int memcmp(byte* s1, byte* s2, size_t n)
         {
             int ret = 0;
             while (n-- != 0 &&
@@ -86,11 +87,12 @@ namespace StdLib
             return ret;
         }
 
-        public unsafe static byte* strchr (byte* s, int c)
+        public unsafe static byte* strchr(byte* s, int c)
         {
             byte* p = s;
 
-            for (; ; ++p) {
+            for (; ; ++p)
+            {
                 if (*p == c)
                     return (p);
                 if (*p == '\0')
@@ -98,7 +100,7 @@ namespace StdLib
             }
         }
 
-        unsafe static int strcmp (byte* s1, byte* s2)
+        unsafe static int strcmp(byte* s1, byte* s2)
         {
             while (*s1 == *s2++)
                 if (*s1++ == '\0')
@@ -106,7 +108,7 @@ namespace StdLib
             return (*(byte*)s1 - *(byte*)(s2 - 1));
         }
 
-        static ArrayList registeredMemory = new ArrayList ();
+        static ArrayList registeredMemory = new ArrayList();
 
         //static unsafe readonly MemoryBlock regHead = new MemoryBlock (null, 0, "Root of All Memory");
 
@@ -120,7 +122,7 @@ namespace StdLib
             //public MemoryBlock? Less;
             //public MemoryBlock? Greater;
 
-            public MemoryBlock (byte* pointer, long length, string purpose)
+            public MemoryBlock(byte* pointer, long length, string purpose)
             {
                 Pointer = pointer;
                 Length = length;
@@ -128,13 +130,14 @@ namespace StdLib
             }
         }
 
-        [DllExport ("@strncmp")]
-        public unsafe static int strncmp (byte* s1, byte* s2, long n)
+        [DllExport("@strncmp")]
+        public unsafe static int strncmp(byte* s1, byte* s2, long n)
         {
 
             if (n == 0)
                 return (0);
-            do {
+            do
+            {
                 if (*s1 != *s2++)
                     return (*(byte*)s1 -
                         *(byte*)(s2 - 1));
@@ -144,58 +147,68 @@ namespace StdLib
             return (0);
         }
 
-        [DllExport ("@_verify_read_pointer")]
-        public unsafe static void VerifyReadPointer (byte* pointer)
+        [DllExport("@_verify_read_pointer")]
+        public unsafe static void VerifyReadPointer(byte* pointer)
         {
-            lock (registeredMemory) {
+            lock (registeredMemory)
+            {
                 var n = registeredMemory.Count;
                 int insertAt = 0;
-                while (insertAt < n && pointer >= ((MemoryBlock)registeredMemory[insertAt]).Pointer) {
+                while (insertAt < n && pointer >= ((MemoryBlock)registeredMemory[insertAt]).Pointer)
+                {
                     insertAt++;
                 }
                 var i = insertAt - 1;
-                if (0 <= i && i < registeredMemory.Count) {
+                if (0 <= i && i < registeredMemory.Count)
+                {
                     var b = (MemoryBlock)registeredMemory[i];
                     var offset = pointer - b.Pointer;
-                    if (offset > b.Length) {
-                        throw new Exception ("Read Access Violation 0x" + ((ulong)pointer).ToString("x") + ". Address outside the range of block @{i}/{registeredMemory.Count} {b.Purpose}[{(IntPtr)offset}/{b.Length}]");
+                    if (offset > b.Length)
+                    {
+                        throw new Exception("Read Access Violation 0x" + ((ulong)pointer).ToString("x") + ". Address outside the range of block @{i}/{registeredMemory.Count} {b.Purpose}[{(IntPtr)offset}/{b.Length}]");
                     }
                     //Console.WriteLine ($"READ 0x{(ulong)pointer:x} block @{i}/{registeredMemory.Count} {b.Purpose}[{(IntPtr)offset}/{b.Length}]");
                 }
-                else {
-                    throw new Exception ("Read Access Violation 0x" + ((ulong)pointer).ToString("x") + ". Could not find allocated block @{i}/{registeredMemory.Count}");
+                else
+                {
+                    throw new Exception("Read Access Violation 0x" + ((ulong)pointer).ToString("x") + ". Could not find allocated block @{i}/{registeredMemory.Count}");
                 }
             }
 
             //Console.WriteLine ("READ " + (IntPtr)pointer);
         }
 
-        [DllExport ("@_verify_write_pointer")]
-        public unsafe static void VerifyWritePointer (byte* pointer)
+        [DllExport("@_verify_write_pointer")]
+        public unsafe static void VerifyWritePointer(byte* pointer)
         {
-            lock (registeredMemory) {
+            lock (registeredMemory)
+            {
                 var n = registeredMemory.Count;
                 int insertAt = 0;
-                while (insertAt < n && pointer >= ((MemoryBlock)registeredMemory[insertAt]).Pointer) {
+                while (insertAt < n && pointer >= ((MemoryBlock)registeredMemory[insertAt]).Pointer)
+                {
                     insertAt++;
                 }
                 var i = insertAt - 1;
-                if (0 <= i && i < registeredMemory.Count) {
+                if (0 <= i && i < registeredMemory.Count)
+                {
                     var b = (MemoryBlock)registeredMemory[i];
                     var offset = pointer - b.Pointer;
-                    if (offset > b.Length) {
-                        throw new Exception ("Write Access Violation 0x" + ((ulong)pointer).ToString("x") + ". Address outside the range of block @{i}/{registeredMemory.Count} {b.Purpose}[{(IntPtr)offset}/{b.Length}]");
+                    if (offset > b.Length)
+                    {
+                        throw new Exception("Write Access Violation 0x" + ((ulong)pointer).ToString("x") + ". Address outside the range of block @{i}/{registeredMemory.Count} {b.Purpose}[{(IntPtr)offset}/{b.Length}]");
                     }
                     //Console.WriteLine ($"WRITE 0x{(ulong)pointer:x} block @{i}/{registeredMemory.Count} {b.Purpose}[{(IntPtr)offset}/{b.Length}]");
                 }
-                else {
-                    throw new Exception ($"Write Access Violation 0x" + ((ulong)pointer).ToString("x") + ". Could not find allocated block @{i}/{registeredMemory.Count}");
+                else
+                {
+                    throw new Exception($"Write Access Violation 0x" + ((ulong)pointer).ToString("x") + ". Could not find allocated block @{i}/{registeredMemory.Count}");
                 }
             }
         }
 
-        [DllExport ("@_register_memory")]
-        public unsafe static void RegisterMemory (byte* pointer, long size, string purpose)
+        [DllExport("@_register_memory")]
+        public unsafe static void RegisterMemory(byte* pointer, long size, string purpose)
         {
             //var b = new MemoryBlock (pointer, size, purpose);
 
@@ -213,53 +226,60 @@ namespace StdLib
             //    }
             //}
 
-            lock (registeredMemory) {
+            lock (registeredMemory)
+            {
                 var n = registeredMemory.Count;
                 int insertAt = 0;
-                while (insertAt < n && pointer >= ((MemoryBlock)registeredMemory[insertAt]).Pointer) {
+                while (insertAt < n && pointer >= ((MemoryBlock)registeredMemory[insertAt]).Pointer)
+                {
                     insertAt++;
                 }
-                registeredMemory.Insert (insertAt, new MemoryBlock (pointer, size, purpose));
+                registeredMemory.Insert(insertAt, new MemoryBlock(pointer, size, purpose));
                 //Console.WriteLine ($"REGISTER @{insertAt} 0x{(ulong)pointer:x} length {size} for {purpose}");
             }
             //Console.WriteLine ("REGISTER " + (IntPtr)pointer + " length " + size + " for " + purpose);
         }
 
-        [DllExport ("@_unregister_memory")]
-        public unsafe static void UnregisterMemory (byte* pointer)
+        [DllExport("@_unregister_memory")]
+        public unsafe static void UnregisterMemory(byte* pointer)
         {
             if (pointer == null)
                 return;
-            lock (registeredMemory) {
+            lock (registeredMemory)
+            {
                 var n = registeredMemory.Count;
-                for (var i = 0; i < n; i++) {
+                for (var i = 0; i < n; i++)
+                {
                     var b = ((MemoryBlock)registeredMemory[i]);
-                    if (b.Pointer == pointer) {
+                    if (b.Pointer == pointer)
+                    {
                         //Console.WriteLine ($"UNREGISTER @{insertAt} 0x{(ulong)pointer:x} length {b.Length} for {b.Purpose}");
-                        registeredMemory.RemoveAt (i);
+                        registeredMemory.RemoveAt(i);
                         return;
                     }
                 }
-                throw new Exception ("Free Access Violation. No block for 0x" + ((ulong)pointer).ToString("x"));
+                throw new Exception("Free Access Violation. No block for 0x" + ((ulong)pointer).ToString("x"));
             }
         }
 
-        [DllExport ("@malloc")]
-        public unsafe static byte* malloc (long size)
+        [DllExport("@malloc")]
+        public unsafe static byte* malloc(long size)
         {
-            var pointer = (byte*)Marshal.AllocHGlobal ((IntPtr)size);
-            if (Safe) {
-                RegisterMemory (pointer, size, "malloc");
+            var pointer = (byte*)Marshal.AllocHGlobal((IntPtr)size);
+            if (Safe)
+            {
+                RegisterMemory(pointer, size, "malloc");
             }
             return pointer;
         }
 
-        [DllExport ("@free")]
-        public unsafe static void free (byte* pointer)
+        [DllExport("@free")]
+        public unsafe static void free(byte* pointer)
         {
-            Marshal.FreeHGlobal ((IntPtr)pointer);
-            if (Safe) {
-                UnregisterMemory (pointer);
+            Marshal.FreeHGlobal((IntPtr)pointer);
+            if (Safe)
+            {
+                UnregisterMemory(pointer);
             }
         }
 
@@ -268,11 +288,11 @@ namespace StdLib
 
     public class DllExportAttribute : Attribute
     {
-        public DllExportAttribute (string symbol)
+        public DllExportAttribute(string symbol)
         {
         }
 
-        public DllExportAttribute ()
+        public DllExportAttribute()
         {
         }
     }

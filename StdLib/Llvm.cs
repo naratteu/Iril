@@ -4,21 +4,24 @@ using System.Runtime.InteropServices;
 
 namespace StdLib
 {
-    unsafe struct __va_list_tag
-    {
-        public int fp_offset;
-        public int gp_offset;
-        public byte* overflow_arg_area;
-        public byte* reg_save_area;
-    }
-
     [DllExport]
     public static class Llvm
     {
-        [DllExport ("@llvm.va_start")]
-        public unsafe static void va_start (byte* arglist, object[] arguments)
+        // Static slot table for va_list: avoids GCHandle and AccessViolation issues.
+        // va_list memory stores a slot index (int); slots hold the actual object[] args.
+        public static readonly object[][] _vaSlots = new object[256][];
+        public static int _vaNextSlot = 0;
+
+        [DllExport("@llvm.va_start")]
+        public unsafe static void va_start(byte* arglist, object[] arguments)
         {
-            throw new NotSupportedException ("Cannot import type reference StdLib.__va_list_tag");
+            if (arglist != null && arguments != null)
+            {
+                int slot = (_vaNextSlot++) & 255;  // circular, 256 slots
+                _vaSlots[slot] = arguments;
+                *(int*)arglist = slot;  // store slot index in va_list memory
+            }
+            return;
             /*
             // Get required size
             var list = (__va_list_tag*)arglist;
@@ -122,18 +125,19 @@ namespace StdLib
             */
         }
 
-        [DllExport ("@llvm.va_end")]
-        public unsafe static void va_end (byte* arglist)
+        [DllExport("@llvm.va_end")]
+        public unsafe static void va_end(byte* arglist)
         {
-            throw new NotSupportedException ("Cannot import type reference StdLib.__va_list_tag");
-            // var list = (__va_list_tag*)arglist;
-            // Marshal.FreeHGlobal ((IntPtr)list->reg_save_area);
-            // if (Memory.Safe) {
-            //     Memory.UnregisterMemory (list->reg_save_area);
-            // }
+            // Clear the slot when done (optional cleanup)
+            if (arglist != null)
+            {
+                int slot = *(int*)arglist;
+                if (slot >= 0 && slot < 256) _vaSlots[slot] = null;
+                *(int*)arglist = -1;
+            }
         }
 
-        [DllExport ("@llvm.fshl.i64")]
+        [DllExport("@llvm.fshl.i64")]
         public unsafe static ulong fshl_i64(ulong a, ulong b, ulong c)
         {
             // Performs a funnel shift left:
@@ -143,7 +147,8 @@ namespace StdLib
             // and the most significant bits are extracted
             // to produce a result that is the same size as the original arguments.
             var result = a;
-            while (c > 0) {
+            while (c > 0)
+            {
                 result = (result << 1) | (b >> 63);
                 b <<= 1;
                 c--;
@@ -151,7 +156,7 @@ namespace StdLib
             return result;
         }
 
-        [DllExport ("@llvm.fshl.i32")]
+        [DllExport("@llvm.fshl.i32")]
         public unsafe static uint fshl_i32(uint a, uint b, uint c)
         {
             // Performs a funnel shift left:
@@ -161,7 +166,8 @@ namespace StdLib
             // and the most significant bits are extracted
             // to produce a result that is the same size as the original arguments.
             var result = a;
-            while (c > 0) {
+            while (c > 0)
+            {
                 result = (result << 1) | (b >> 31);
                 b <<= 1;
                 c--;
@@ -169,13 +175,14 @@ namespace StdLib
             return result;
         }
 
-        [DllExport ("@llvm.memmove.p0i8.p0i8.i64")]
-        public unsafe static void memmove (byte* dest, byte* src, size_t len)
+        [DllExport("@llvm.memmove.p0i8.p0i8.i64")]
+        public unsafe static void memmove(byte* dest, byte* src, size_t len)
         {
             byte* d = (byte*)dest;
             byte* s = (byte*)src;
             byte* r = d;
-            if (s < d) {
+            if (s < d)
+            {
                 d += len;
                 s += len;
                 while (len-- != 0)

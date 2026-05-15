@@ -23,7 +23,8 @@ namespace Iril
         public MethodDefinition ILDefinition;
         public SymbolTable<ParameterDefinition> ParamSyms;
         public int ReferenceCount;
-        public DefinedFunction(string origin) {
+        public DefinedFunction(string origin)
+        {
             Origin = origin;
         }
     }
@@ -38,12 +39,12 @@ namespace Iril
         readonly LivelinessTable liveliness;
         readonly SymbolTable<VariableDefinition> phiLocals = new SymbolTable<VariableDefinition>();
         readonly SymbolTable<bool> shouldInline = new SymbolTable<bool>();
-        readonly BlocksContext mainContext = new BlocksContext ();
+        readonly BlocksContext mainContext = new BlocksContext();
 
-        readonly SymbolTable<LandingPad> landingPads = new SymbolTable<LandingPad> ();
-        readonly SymbolTable<bool> isLandingPad = new SymbolTable<bool> ();
+        readonly SymbolTable<LandingPad> landingPads = new SymbolTable<LandingPad>();
+        readonly SymbolTable<bool> isLandingPad = new SymbolTable<bool>();
 
-        public List<Message> Messages { get; } = new List<Message> ();
+        public List<Message> Messages { get; } = new List<Message>();
 
         public FunctionCompiler(Compilation compilation, DefinedFunction function)
             : base(compilation, function.IRModule, function.ILDefinition)
@@ -51,12 +52,12 @@ namespace Iril
             this.function = function;
             liveliness = new LivelinessTable(function);
 
-            UMulOverflowResultTypeI64 = new Lazy<TypeDefinition> (() => GetUMulOverflowResultType (Types.IntegerType.I64));
+            UMulOverflowResultTypeI64 = new Lazy<TypeDefinition>(() => GetUMulOverflowResultType(Types.IntegerType.I64));
         }
 
-        readonly SymbolTable<int> localCounts = new SymbolTable<int> ();
+        readonly SymbolTable<int> localCounts = new SymbolTable<int>();
 
-        readonly SymbolTable<VariableDefinition> allocas = new SymbolTable<VariableDefinition> ();
+        readonly SymbolTable<VariableDefinition> allocas = new SymbolTable<VariableDefinition>();
 
         public void CompileFunction()
         {
@@ -70,7 +71,7 @@ namespace Iril
 
             //
             // Get local usage count
-            //            
+            //
             foreach (var p in paramSyms)
             {
                 localCounts.Add(p.Key, 0);
@@ -188,7 +189,8 @@ namespace Iril
             // Mark exception values to be inlined
             // if they are only used in a simple resume
             //
-            foreach (var b in f.Blocks) {
+            foreach (var b in f.Blocks)
+            {
                 if (b.Assignments.Length <= 0)
                     continue;
 
@@ -202,7 +204,8 @@ namespace Iril
                     && b.Terminator is ResumeInstruction resume
                     && resume.Value.Value is LocalValue rlocal
                     && rlocal.Symbol == symbol
-                    && localCounts[symbol] == 1) {
+                    && localCounts[symbol] == 1)
+                {
 
                     shouldInline[symbol] = true;
                 }
@@ -270,106 +273,117 @@ namespace Iril
             //
             // Find landing pads for exception handlers
             //
-            FindLandingPads ();
+            FindLandingPads();
 
             //
             // Find setjmps
             //
-            FindSetjmps ();
+            FindSetjmps();
 
             prev = null;
 
             //
             // Trace
             //
-            if (ShouldTrace >= 1) {
-                Emit (il.Create (OpCodes.Ldc_I4, 32));
-                Emit (il.Create (OpCodes.Newobj, compilation.sysStackTraceCtor));
-                Emit (il.Create (OpCodes.Callvirt, compilation.sysStackTraceGetFrameCount));
-                Emit (il.Create (OpCodes.Ldc_I4, 4));
-                Emit (il.Create (OpCodes.Mul));
-                Emit (il.Create (OpCodes.Newobj, compilation.sysStringCharCountCtor));
-                Emit (il.Create (OpCodes.Ldstr, $"{function.IRDefinition.Symbol}("));
-                Emit (il.Create (OpCodes.Call, compilation.sysStringConcat));
-                Emit (il.Create (OpCodes.Call, compilation.sysConsoleWrite));
+            if (ShouldTrace >= 1)
+            {
+                Emit(il.Create(OpCodes.Ldc_I4, 32));
+                Emit(il.Create(OpCodes.Newobj, compilation.sysStackTraceCtor));
+                Emit(il.Create(OpCodes.Callvirt, compilation.sysStackTraceGetFrameCount));
+                Emit(il.Create(OpCodes.Ldc_I4, 4));
+                Emit(il.Create(OpCodes.Mul));
+                Emit(il.Create(OpCodes.Newobj, compilation.sysStringCharCountCtor));
+                Emit(il.Create(OpCodes.Ldstr, $"{function.IRDefinition.Symbol}("));
+                Emit(il.Create(OpCodes.Call, compilation.sysStringConcat));
+                Emit(il.Create(OpCodes.Call, compilation.sysConsoleWrite));
                 var head = "";
-                for (var i = 0; i < function.ILDefinition.Parameters.Count; i++) {
+                for (var i = 0; i < function.ILDefinition.Parameters.Count; i++)
+                {
                     var p = function.ILDefinition.Parameters[i];
-                    Emit (il.Create (OpCodes.Ldstr, head));
-                    Emit (il.Create (OpCodes.Call, compilation.sysConsoleWrite));
-                    Emit (il.Create (OpCodes.Ldarg, i));
-                    EmitBox (p.ParameterType);
-                    Emit (il.Create (OpCodes.Call, compilation.sysConsoleWriteObj));
+                    Emit(il.Create(OpCodes.Ldstr, head));
+                    Emit(il.Create(OpCodes.Call, compilation.sysConsoleWrite));
+                    Emit(il.Create(OpCodes.Ldarg, i));
+                    EmitBox(p.ParameterType);
+                    Emit(il.Create(OpCodes.Call, compilation.sysConsoleWriteObj));
                     head = ", ";
                 }
-                Emit (il.Create (OpCodes.Ldstr, $")"));
-                Emit (il.Create (OpCodes.Call, compilation.sysConsoleWriteLine));
+                Emit(il.Create(OpCodes.Ldstr, $")"));
+                Emit(il.Create(OpCodes.Call, compilation.sysConsoleWriteLine));
             }
 
             //
             // Create target instructions for each block
             //
             var emitBlocks = (from b in f.Blocks
-                              where !(isLandingPad.ContainsKey (b.Symbol) && isLandingPad[b.Symbol])
-                              where !setjmpHandledBlocks.ContainsKey (b.Symbol)
-                              select b).ToList ();
-            foreach (var b in emitBlocks) {
-                EmitBlockFirstInstruction (b, mainContext);
+                              where !(isLandingPad.ContainsKey(b.Symbol) && isLandingPad[b.Symbol])
+                              where !setjmpHandledBlocks.ContainsKey(b.Symbol)
+                              select b).ToList();
+            foreach (var b in emitBlocks)
+            {
+                EmitBlockFirstInstruction(b, mainContext);
             }
 
             //
             // Emit block assignments
             //
             var sqpts = new List<(CecilInstruction, MetaSymbol)>();
-            for (var i = 0; i < emitBlocks.Count; i++) {
+            for (var i = 0; i < emitBlocks.Count; i++)
+            {
                 var b = emitBlocks[i];
                 var nextBlock = i + 1 < emitBlocks.Count ? emitBlocks[i + 1] : null;
-                if (setjmpBlocks.TryGetValue (b.Symbol, out var setjmp)) {
-                    EmitSetjmpBlockAssignments (b, nextBlock, mainContext, setjmp);
+                if (setjmpBlocks.TryGetValue(b.Symbol, out var setjmp))
+                {
+                    EmitSetjmpBlockAssignments(b, nextBlock, mainContext, setjmp);
                 }
-                else {
-                    EmitBlockAssignments (b, nextBlock, mainContext);
+                else
+                {
+                    EmitBlockAssignments(b, nextBlock, mainContext);
                 }
             }
 
             body.InitLocals = true;
-            body.Optimize ();
+            body.Optimize();
 
             //
             // Emit try handlers
             //
-            foreach (var eh in ehs) {
-                var handler = new ExceptionHandler (ExceptionHandlerType.Catch) {
+            foreach (var eh in ehs)
+            {
+                var handler = new ExceptionHandler(ExceptionHandlerType.Catch)
+                {
                     TryStart = eh.TryStart,
                     TryEnd = eh.TryLast.Next,
                     HandlerStart = eh.TryLast.Next,
                     HandlerEnd = eh.CatchLast.Next,
                     CatchType = compilation.sysException,
                 };
-                body.ExceptionHandlers.Add (handler);
+                body.ExceptionHandlers.Add(handler);
             }
 
             //
             // Emit setjmp handlers
             //
-            foreach (var eh in setjmpBlocks.Values) {
-                var handler = new ExceptionHandler (ExceptionHandlerType.Catch) {
+            foreach (var eh in setjmpBlocks.Values)
+            {
+                var handler = new ExceptionHandler(ExceptionHandlerType.Catch)
+                {
                     TryStart = eh.TryStart,
                     TryEnd = eh.TryLast.Next,
                     HandlerStart = eh.TryLast.Next,
                     HandlerEnd = eh.CatchLast.Next,
                     CatchType = compilation.LongjmpException,
                 };
-                body.ExceptionHandlers.Add (handler);
+                body.ExceptionHandlers.Add(handler);
             }
 
             //
             // Add sequence points
             //
-            foreach (var (cinst, dbgSym) in sqpts) {
-                var sp = TryGetSequencePoint (dbgSym);
+            foreach (var (cinst, dbgSym) in sqpts)
+            {
+                var sp = TryGetSequencePoint(dbgSym);
                 if (sp != null)
-                    method.DebugInformation.SequencePoints.Add (sp);
+                    method.DebugInformation.SequencePoints.Add(sp);
             }
 
             //
@@ -379,7 +393,7 @@ namespace Iril
 
             foreach (var b in emitBlocks)
             {
-                if (!mainContext.BlockFirstInstr.ContainsKey (b.Symbol) || !mainContext.BlockLastInstr.ContainsKey (b.Symbol))
+                if (!mainContext.BlockFirstInstr.ContainsKey(b.Symbol) || !mainContext.BlockLastInstr.ContainsKey(b.Symbol))
                     continue;
                 var scope = new ScopeDebugInformation(mainContext.BlockFirstInstr[b.Symbol], mainContext.BlockLastInstr[b.Symbol]);
                 foreach (var a in b.Assignments)
@@ -387,8 +401,9 @@ namespace Iril
                     if (!a.HasResult)
                         continue;
                     var name = "";
-                    if (blockLocalNames.TryGetValue (b.Symbol, out var localNames)
-                        && localNames.TryGetValue (a.Result, out var dbgName)) {
+                    if (blockLocalNames.TryGetValue(b.Symbol, out var localNames)
+                        && localNames.TryGetValue(a.Result, out var dbgName))
+                    {
                         name = dbgName + "_";
                     }
 
@@ -414,17 +429,20 @@ namespace Iril
             md.Body = body;
         }
 
-        private SequencePoint TryGetSequencePoint (MetaSymbol dbgSym)
+        private SequencePoint TryGetSequencePoint(MetaSymbol dbgSym)
         {
-            if (module.Metadata.TryGetValue (dbgSym, out var dbg) && dbg is SymbolTable<object> dbgVals) {
+            if (module.Metadata.TryGetValue(dbgSym, out var dbg) && dbg is SymbolTable<object> dbgVals)
+            {
                 var cinstr = prev;
-                if (dbgVals.TryGetValue (Symbol.Line, out var lineO) && lineO is Constant line
-                    && dbgVals.TryGetValue (Symbol.Column, out var columnO) && columnO is Constant column
-                    && dbgVals.TryGetValue (Symbol.Scope, out var scopeO) && scopeO is MetaSymbol scopeRef) {
+                if (dbgVals.TryGetValue(Symbol.Line, out var lineO) && lineO is Constant line
+                    && dbgVals.TryGetValue(Symbol.Column, out var columnO) && columnO is Constant column
+                    && dbgVals.TryGetValue(Symbol.Scope, out var scopeO) && scopeO is MetaSymbol scopeRef)
+                {
 
-                    var doc = compilation.GetScopeDocument (module, scopeRef);
-                    if (doc != null) {
-                        var sp = new SequencePoint (cinstr, doc);
+                    var doc = compilation.GetScopeDocument(module, scopeRef);
+                    if (doc != null)
+                    {
+                        var sp = new SequencePoint(cinstr, doc);
                         sp.StartLine = line.Int32Value;
                         sp.EndLine = line.Int32Value;
                         sp.StartColumn = column.Int32Value;
@@ -436,107 +454,126 @@ namespace Iril
             return null;
         }
 
-        void EmitBlocks (List<Block> emitBlocks, BlocksContext context)
+        void EmitBlocks(List<Block> emitBlocks, BlocksContext context)
         {
-            foreach (var b in emitBlocks) {
-                EmitBlockFirstInstruction (b, context);
+            foreach (var b in emitBlocks)
+            {
+                EmitBlockFirstInstruction(b, context);
             }
 
             //
             // Emit block assignments
             //
-            for (var i = 0; i < emitBlocks.Count; i++) {
+            for (var i = 0; i < emitBlocks.Count; i++)
+            {
                 var b = emitBlocks[i];
                 var nextBlock = i + 1 < emitBlocks.Count ? emitBlocks[i + 1] : null;
 
-                if (setjmpBlocks.TryGetValue (b.Symbol, out var innerSetjmp)) {
-                    EmitSetjmpBlockAssignments (b, nextBlock: null, context, innerSetjmp);
+                if (setjmpBlocks.TryGetValue(b.Symbol, out var innerSetjmp))
+                {
+                    EmitSetjmpBlockAssignments(b, nextBlock: null, context, innerSetjmp);
                 }
-                else if (!(isLandingPad.ContainsKey (b.Symbol) && isLandingPad[b.Symbol])) {
-                    EmitBlockAssignments (b, nextBlock, context);
-                }                
+                else if (!(isLandingPad.ContainsKey(b.Symbol) && isLandingPad[b.Symbol]))
+                {
+                    EmitBlockAssignments(b, nextBlock, context);
+                }
             }
         }
 
-        void EmitSetjmpBlockAssignments (Block setjmpBlock, Block nextBlock, BlocksContext origContext, SetjmpInfo setjmp)
+        void EmitSetjmpBlockAssignments(Block setjmpBlock, Block nextBlock, BlocksContext origContext, SetjmpInfo setjmp)
         {
             var b = setjmpBlock;
             prev = origContext.BlockHeadLastInstr[b.Symbol];
-            foreach (var a in b.Assignments) {
-                if (!ReferenceEquals (setjmp.SetjmpCallAssignment, a))
-                    EmitBlockAssignment (b, nextBlock: null, origContext, a);
+            foreach (var a in b.Assignments)
+            {
+                if (!ReferenceEquals(setjmp.SetjmpCallAssignment, a))
+                    EmitBlockAssignment(b, nextBlock: null, origContext, a);
             }
             origContext.BlockLastInstr[b.Symbol] = prev;
 
-            Emit (OpCodes.Nop);
+            Emit(OpCodes.Nop);
             setjmp.TryStart = prev;
 
-            if (setjmp.InitialBlock != setjmp.ExitBlockSymbol && setjmp.InitialBlocks.Count > 0) {
-                var context = new BlocksContext (origContext, setjmp.InitialBlocks);
-                var emitBlocks = setjmp.InitialBlocks.Select (x => setjmp.BlockIndex[x]).ToList ();
+            if (setjmp.InitialBlock != setjmp.ExitBlockSymbol && setjmp.InitialBlocks.Count > 0)
+            {
+                var context = new BlocksContext(origContext, setjmp.InitialBlocks);
+                var emitBlocks = setjmp.InitialBlocks.Select(x => setjmp.BlockIndex[x]).ToList();
                 //EmitBlockAssignment (emitBlocks[0], null, context, new Assignment (setjmp.SetjmpCallAssignment.Result, IR.Instruction.ZeroI32));
-                EmitBlocks (emitBlocks, context);
+                EmitBlocks(emitBlocks, context);
             }
-            else {
-                if (setjmp.ExitBlockSymbol != null) {
-                    Emit (il.Create (OpCodes.Leave, GetLabel (new LabelValue ((LocalSymbol)setjmp.ExitBlockSymbol), setjmpBlock, origContext)));
+            else
+            {
+                if (setjmp.ExitBlockSymbol != null)
+                {
+                    Emit(il.Create(OpCodes.Leave, GetLabel(new LabelValue((LocalSymbol)setjmp.ExitBlockSymbol), setjmpBlock, origContext)));
                 }
-                else {
-                    throw new NotSupportedException ($"Empty try block without exit");
+                else
+                {
+                    throw new NotSupportedException($"Empty try block without exit");
                 }
             }
 
             setjmp.TryLast = prev;
 
-            if (setjmp.LaterBlock != setjmp.ExitBlockSymbol && setjmp.LaterBlocks.Count > 0) {
-                var context = new BlocksContext (origContext, setjmp.LaterBlocks);
-                var emitBlocks = setjmp.LaterBlocks.Select (x => setjmp.BlockIndex[x]).ToList ();
+            if (setjmp.LaterBlock != setjmp.ExitBlockSymbol && setjmp.LaterBlocks.Count > 0)
+            {
+                var context = new BlocksContext(origContext, setjmp.LaterBlocks);
+                var emitBlocks = setjmp.LaterBlocks.Select(x => setjmp.BlockIndex[x]).ToList();
                 //EmitBlockAssignment (emitBlocks[0], null, context, new Assignment (setjmp.SetjmpCallAssignment.Result, IR.Instruction.OneI32));
-                EmitBlocks (emitBlocks, context);
+                EmitBlocks(emitBlocks, context);
             }
-            else {
-                if (setjmp.ExitBlockSymbol != null) {
-                    Emit (il.Create (OpCodes.Leave, GetLabel (new LabelValue ((LocalSymbol)setjmp.ExitBlockSymbol), setjmpBlock, origContext)));
+            else
+            {
+                if (setjmp.ExitBlockSymbol != null)
+                {
+                    Emit(il.Create(OpCodes.Leave, GetLabel(new LabelValue((LocalSymbol)setjmp.ExitBlockSymbol), setjmpBlock, origContext)));
                 }
-                else {
-                    throw new NotSupportedException ($"Empty catch block without exit");
+                else
+                {
+                    throw new NotSupportedException($"Empty catch block without exit");
                 }
             }
 
             setjmp.CatchLast = prev;
         }
 
-        void EmitBlockAssignments (Block b, Block nextBlock, BlocksContext context)
+        void EmitBlockAssignments(Block b, Block nextBlock, BlocksContext context)
         {
             prev = context.BlockHeadLastInstr[b.Symbol];
 
-            foreach (var a in b.Assignments) {
-                EmitBlockAssignment (b, nextBlock, context, a);
+            foreach (var a in b.Assignments)
+            {
+                EmitBlockAssignment(b, nextBlock, context, a);
             }
-            EmitInstruction (b.TerminatorAssignment.Result, b.Terminator, b, nextBlock, context, unsigned: null);
+            EmitInstruction(b.TerminatorAssignment.Result, b.Terminator, b, nextBlock, context, unsigned: null);
 
             context.BlockLastInstr[b.Symbol] = prev;
         }
 
-        private void EmitBlockAssignment (Block b, Block nextBlock, BlocksContext context, Assignment a)
+        private void EmitBlockAssignment(Block b, Block nextBlock, BlocksContext context, Assignment a)
         {
-            if (!ShouldInline (a.Result)
-                                && !(a.Instruction is IR.PhiInstruction)) {
+            if (!ShouldInline(a.Result)
+                                && !(a.Instruction is IR.PhiInstruction))
+            {
 
-                EmitInstruction (a.Result, a.Instruction, b, nextBlock, context, unsigned: null);
+                EmitInstruction(a.Result, a.Instruction, b, nextBlock, context, unsigned: null);
 
-                if (a.HasDebugSymbol) {
+                if (a.HasDebugSymbol)
+                {
                     //sqpts.Add ((prev, a.DebugSymbol));
                 }
 
                 // If we need to assign it, do so
-                if (locals.TryGetValue (a.Result, out var vd)) {
-                    Emit (il.Create (OpCodes.Stloc, vd));
+                if (locals.TryGetValue(a.Result, out var vd))
+                {
+                    Emit(il.Create(OpCodes.Stloc, vd));
                 }
-                else {
+                else
+                {
                     // If it produced a value but it's discarded, pop it
-                    if (a.Result != LocalSymbol.None && localCounts[a.Result] == 0) {
-                        Emit (il.Create (OpCodes.Pop));
+                    if (a.Result != LocalSymbol.None && localCounts[a.Result] == 0)
+                    {
+                        Emit(il.Create(OpCodes.Pop));
                     }
                 }
             }
@@ -550,89 +587,98 @@ namespace Iril
             public readonly SymbolTable<CecilInstruction> BlockHeadLastInstr;
             public readonly SymbolTable<CecilInstruction> BlockLastInstr;
             public readonly SymbolSet ProtectedBlocks;
-            public BlocksContext ()
+            public BlocksContext()
             {
                 IsExceptionHandler = false;
-                BlockFirstInstr = new SymbolTable<CecilInstruction> ();
-                BlockPredInstr = new SymbolTable<SymbolTable<CecilInstruction>> ();
-                BlockHeadLastInstr = new SymbolTable<CecilInstruction> ();
-                BlockLastInstr = new SymbolTable<CecilInstruction> ();
+                BlockFirstInstr = new SymbolTable<CecilInstruction>();
+                BlockPredInstr = new SymbolTable<SymbolTable<CecilInstruction>>();
+                BlockHeadLastInstr = new SymbolTable<CecilInstruction>();
+                BlockLastInstr = new SymbolTable<CecilInstruction>();
             }
-            public BlocksContext (BlocksContext other, IEnumerable<Symbol> protectedBlocks)
+            public BlocksContext(BlocksContext other, IEnumerable<Symbol> protectedBlocks)
             {
                 IsExceptionHandler = true;
-                ProtectedBlocks = new SymbolSet (protectedBlocks);
-                BlockFirstInstr = new SymbolTable<CecilInstruction> (other.BlockFirstInstr);
-                BlockHeadLastInstr = new SymbolTable<CecilInstruction> (other.BlockHeadLastInstr);
-                BlockLastInstr = new SymbolTable<CecilInstruction> (other.BlockLastInstr);
-                BlockPredInstr = new SymbolTable<SymbolTable<CecilInstruction>> ();
-                foreach (var kv in other.BlockPredInstr) {
-                    var r = new SymbolTable<CecilInstruction> (kv.Value);
+                ProtectedBlocks = new SymbolSet(protectedBlocks);
+                BlockFirstInstr = new SymbolTable<CecilInstruction>(other.BlockFirstInstr);
+                BlockHeadLastInstr = new SymbolTable<CecilInstruction>(other.BlockHeadLastInstr);
+                BlockLastInstr = new SymbolTable<CecilInstruction>(other.BlockLastInstr);
+                BlockPredInstr = new SymbolTable<SymbolTable<CecilInstruction>>();
+                foreach (var kv in other.BlockPredInstr)
+                {
+                    var r = new SymbolTable<CecilInstruction>(kv.Value);
                     BlockPredInstr[kv.Key] = r;
                 }
             }
 
-            public bool IsProtecting (LabelValue destination)
+            public bool IsProtecting(LabelValue destination)
             {
-                return ProtectedBlocks.Contains (destination.Symbol);
+                return ProtectedBlocks.Contains(destination.Symbol);
             }
         }
 
-        private void EmitBlockFirstInstruction (Block b, BlocksContext context)
+        private void EmitBlockFirstInstruction(Block b, BlocksContext context)
         {
-            var firstI = il.Create (OpCodes.Nop);
+            var firstI = il.Create(OpCodes.Nop);
 
-            var phipreds = b.PhiPredecessors.ToList ();
-            if (phipreds.Count > 0) {
-                var phis = b.Assignments.Where (x => x.Instruction is PhiInstruction).ToList ();
-                var pis = new SymbolTable<CecilInstruction> ();
+            var phipreds = b.PhiPredecessors.ToList();
+            if (phipreds.Count > 0)
+            {
+                var phis = b.Assignments.Where(x => x.Instruction is PhiInstruction).ToList();
+                var pis = new SymbolTable<CecilInstruction>();
                 context.BlockPredInstr[b.Symbol] = pis;
-                for (var j = 0; j < phipreds.Count; j++) {
+                for (var j = 0; j < phipreds.Count; j++)
+                {
                     var pred = phipreds[j];
-                    var i = il.Create (OpCodes.Nop);
+                    var i = il.Create(OpCodes.Nop);
                     pis[pred] = i;
-                    Emit (i);
-                    var phiVs = new List<(Assignment Assignment, PhiInstruction Phi, Value Value)> ();
-                    foreach (var oa in phis) {
+                    Emit(i);
+                    var phiVs = new List<(Assignment Assignment, PhiInstruction Phi, Value Value)>();
+                    foreach (var oa in phis)
+                    {
                         var phi = (PhiInstruction)oa.Instruction;
-                        foreach (var v in phi.Values.Where (x => ((LocalValue)x.Label).Symbol == pred)) {
-                            phiVs.Add ((oa, phi, v.Value));
+                        foreach (var v in phi.Values.Where(x => ((LocalValue)x.Label).Symbol == pred))
+                        {
+                            phiVs.Add((oa, phi, v.Value));
                         }
                     }
-                    EmitPhis (phiVs);
-                    if (j + 1 < phipreds.Count) {
-                        Emit (il.Create (OpCodes.Br, firstI));
+                    EmitPhis(phiVs);
+                    if (j + 1 < phipreds.Count)
+                    {
+                        Emit(il.Create(OpCodes.Br, firstI));
                     }
                 }
             }
 
-            Emit (firstI);
+            Emit(firstI);
             context.BlockFirstInstr[b.Symbol] = firstI;
 
             //
             // Block Trace
             //
-            if (ShouldTrace >= 2) {
-                Emit (il.Create (OpCodes.Ldc_I4, 32));
-                Emit (il.Create (OpCodes.Newobj, compilation.sysStackTraceCtor));
-                Emit (il.Create (OpCodes.Callvirt, compilation.sysStackTraceGetFrameCount));
-                Emit (il.Create (OpCodes.Ldc_I4, 4));
-                Emit (il.Create (OpCodes.Mul));
-                Emit (il.Create (OpCodes.Newobj, compilation.sysStringCharCountCtor));
+            if (ShouldTrace >= 2)
+            {
+                Emit(il.Create(OpCodes.Ldc_I4, 32));
+                Emit(il.Create(OpCodes.Newobj, compilation.sysStackTraceCtor));
+                Emit(il.Create(OpCodes.Callvirt, compilation.sysStackTraceGetFrameCount));
+                Emit(il.Create(OpCodes.Ldc_I4, 4));
+                Emit(il.Create(OpCodes.Mul));
+                Emit(il.Create(OpCodes.Newobj, compilation.sysStringCharCountCtor));
 
                 var message = $"- {b.Symbol}";
 
-                var fass = b.Assignments.FirstOrDefault (x => x.HasDebugSymbol);
-                if (fass != null) {
-                    var seq = TryGetSequencePoint (fass.DebugSymbol);
-                    if (seq != null) {
+                var fass = b.Assignments.FirstOrDefault(x => x.HasDebugSymbol);
+                if (fass != null)
+                {
+                    var seq = TryGetSequencePoint(fass.DebugSymbol);
+                    if (seq != null)
+                    {
                         message += $" {seq.Document.Url}:{seq.StartLine}";
                     }
                 }
 
-                Emit (il.Create (OpCodes.Ldstr, message));
-                Emit (il.Create (OpCodes.Call, compilation.sysStringConcat));
-                Emit (il.Create (OpCodes.Call, compilation.sysConsoleWriteLine));
+                Emit(il.Create(OpCodes.Ldstr, message));
+                Emit(il.Create(OpCodes.Call, compilation.sysStringConcat));
+                Emit(il.Create(OpCodes.Call, compilation.sysConsoleWriteLine));
             }
 
             //
@@ -644,46 +690,56 @@ namespace Iril
             context.BlockHeadLastInstr[b.Symbol] = prev;
         }
 
-        void FindLandingPads ()
+        void FindLandingPads()
         {
             var blocks = function.IRDefinition.Blocks;
-            var blockIndex = new SymbolTable<Block> ();
+            var blockIndex = new SymbolTable<Block>();
             foreach (var b in blocks)
                 blockIndex[b.Symbol] = b;
 
-            foreach (var ab in blocks) {
+            foreach (var ab in blocks)
+            {
                 var s = ab.Symbol;
                 var first = ab.FirstNonPhiAssignment;
-                if (first.Instruction is LandingPadInstruction landing) {
-                    var l = new LandingPad {
+                if (first.Instruction is LandingPadInstruction landing)
+                {
+                    var l = new LandingPad
+                    {
                         Block = ab,
                         Assignment = first,
-                        Blocks = new List<Block> (),
+                        Blocks = new List<Block>(),
                     };
                     landingPads[s] = l;
                     var needsVisit = new List<Symbol> { ab.Symbol };
-                    var visited = new SymbolTable<bool> ();
-                    while (needsVisit.Count > 0) {
+                    var visited = new SymbolTable<bool>();
+                    while (needsVisit.Count > 0)
+                    {
                         var b = blockIndex[needsVisit[0]];
-                        needsVisit.RemoveAt (0);
+                        needsVisit.RemoveAt(0);
                         visited[b.Symbol] = true;
                         isLandingPad[b.Symbol] = true;
-                        l.Blocks.Add (b);
+                        l.Blocks.Add(b);
 
                         var t = b.Terminator;
-                        if (t is IR.ResumeInstruction resume) {
+                        if (t is IR.ResumeInstruction resume)
+                        {
                             b = null;
                         }
-                        else if (t is IR.InvokeInstruction invoke) {
+                        else if (t is IR.InvokeInstruction invoke)
+                        {
                             var ns = invoke.NormalLabel.Symbol;
-                            if (!visited.ContainsKey (ns) && !needsVisit.Contains (ns)) {
-                                needsVisit.Add (ns);
+                            if (!visited.ContainsKey(ns) && !needsVisit.Contains(ns))
+                            {
+                                needsVisit.Add(ns);
                             }
                         }
-                        else {
-                            foreach (var ns in t.NextLabelSymbols) {
-                                if (!visited.ContainsKey (ns) && !needsVisit.Contains (ns)) {
-                                    needsVisit.Add (ns);
+                        else
+                        {
+                            foreach (var ns in t.NextLabelSymbols)
+                            {
+                                if (!visited.ContainsKey(ns) && !needsVisit.Contains(ns))
+                                {
+                                    needsVisit.Add(ns);
                                 }
                             }
                         }
@@ -695,20 +751,26 @@ namespace Iril
             // Unmark isLandingPad for blocks accessible from non-landing pads
             //
             var changed = true;
-            while (changed) {
+            while (changed)
+            {
                 changed = false;
-                foreach (var b in blocks) {
+                foreach (var b in blocks)
+                {
                     if (changed)
                         break;
-                    if (isLandingPad.TryGetValue (b.Symbol, out var isLanding) && isLanding)
+                    if (isLandingPad.TryGetValue(b.Symbol, out var isLanding) && isLanding)
                         continue;
-                    if (b.Terminator is InvokeInstruction) {
+                    if (b.Terminator is InvokeInstruction)
+                    {
                     }
-                    else {
-                        foreach (var l in b.Terminator.NextLabelSymbols) {
-                            if (isLandingPad.TryGetValue (l, out isLanding) && isLanding) {
+                    else
+                    {
+                        foreach (var l in b.Terminator.NextLabelSymbols)
+                        {
+                            if (isLandingPad.TryGetValue(l, out isLanding) && isLanding)
+                            {
                                 changed = true;
-                                isLandingPad.Remove (l);
+                                isLandingPad.Remove(l);
                                 break;
                             }
                         }
@@ -717,36 +779,37 @@ namespace Iril
             }
         }
 
-        void FindSetjmps ()
+        void FindSetjmps()
         {
             var blocks = function.IRDefinition.Blocks;
-            var blockIndex = new SymbolTable<Block> ();
+            var blockIndex = new SymbolTable<Block>();
             foreach (var b in blocks)
                 blockIndex[b.Symbol] = b;
-            FindSetjmps (blocks.First ().Symbol, blockIndex);
+            FindSetjmps(blocks.First().Symbol, blockIndex);
         }
 
-        void FindSetjmps (List<Symbol> blocks, SymbolTable<Block> blockIndex)
+        void FindSetjmps(List<Symbol> blocks, SymbolTable<Block> blockIndex)
         {
             if (blocks.Count == 0)
                 return;
-            var newBlockIndex = new SymbolTable<Block> ();
+            var newBlockIndex = new SymbolTable<Block>();
             foreach (var b in blocks)
                 newBlockIndex[b] = blockIndex[b];
-            FindSetjmps (blocks.First (), newBlockIndex);
+            FindSetjmps(blocks.First(), newBlockIndex);
         }
 
-        readonly SymbolTable<SetjmpInfo> setjmpBlocks = new SymbolTable<SetjmpInfo> ();
-        readonly SymbolTable<SetjmpInfo> setjmpHandledBlocks = new SymbolTable<SetjmpInfo> ();
+        readonly SymbolTable<SetjmpInfo> setjmpBlocks = new SymbolTable<SetjmpInfo>();
+        readonly SymbolTable<SetjmpInfo> setjmpHandledBlocks = new SymbolTable<SetjmpInfo>();
 
-        void FindSetjmps (Symbol firstBlockSymbol, SymbolTable<Block> blockIndex)
+        void FindSetjmps(Symbol firstBlockSymbol, SymbolTable<Block> blockIndex)
         {
-            var analyzed = new SymbolSet ();
-            var needsAnalysis = new SymbolQueue ();
-            needsAnalysis.Enqueue (firstBlockSymbol);
-            while (needsAnalysis.Count > 0) {
-                var blockSymbol = needsAnalysis.Dequeue ();
-                analyzed.Add (blockSymbol);
+            var analyzed = new SymbolSet();
+            var needsAnalysis = new SymbolQueue();
+            needsAnalysis.Enqueue(firstBlockSymbol);
+            while (needsAnalysis.Count > 0)
+            {
+                var blockSymbol = needsAnalysis.Dequeue();
+                analyzed.Add(blockSymbol);
                 var block = blockIndex[blockSymbol];
 
                 //
@@ -755,25 +818,29 @@ namespace Iril
                 Assignment con = null, call = null;
                 SetjmpInfo setjmpInfo = null;
                 if (block.Terminator is ConditionalBrInstruction br
-                    && br.Condition is LocalValue conv) {
-                    con = block.FindAssignment (conv.Symbol);
+                    && br.Condition is LocalValue conv)
+                {
+                    con = block.FindAssignment(conv.Symbol);
                     if (con != null
                         && con.Instruction is IcmpInstruction icmp
-                        && icmp.Op1 is LocalValue icmpop1v) {
-                        call = block.FindAssignment (icmpop1v.Symbol);
+                        && icmp.Op1 is LocalValue icmpop1v)
+                    {
+                        call = block.FindAssignment(icmpop1v.Symbol);
                         if (call != null
                             && call.Instruction is CallInstruction calli
                             && calli.Arguments.Length == 1
                             && calli.Pointer is GlobalValue setjmp
-                            && (setjmp.Symbol.Text == "@setjmp" || setjmp.Symbol.Text == "@_setjmp")) {
+                            && (setjmp.Symbol.Text == "@setjmp" || setjmp.Symbol.Text == "@_setjmp"))
+                        {
                             // FOUND SETJMP
-                            setjmpInfo = new SetjmpInfo {
+                            setjmpInfo = new SetjmpInfo
+                            {
                                 SetjmpBlock = blockSymbol,
                                 SetjmpCallAssignment = call,
                                 InitialBlock = br.IfTrue.Symbol,
                                 LaterBlock = br.IfFalse.Symbol,
                                 Argument = calli.Arguments[0],
-                                BlockIndex = new SymbolTable<Block> (blockIndex),
+                                BlockIndex = new SymbolTable<Block>(blockIndex),
                             };
                         }
                     }
@@ -787,40 +854,50 @@ namespace Iril
                 // 4. remove the used blocks from block index
                 // 5. enqueue the exit block to keep looking for other setjmps
                 //
-                if (setjmpInfo != null) {
+                if (setjmpInfo != null)
+                {
                     //Console.WriteLine ("FOUND SETJMP IN " + function.Symbol);
 
                     //
                     // 1. trace blocks to find: (a) initial blocks, (b) later blocks, (c) exit block
                     //
-                    var initialTrace = TraceBlocks (setjmpInfo.InitialBlock, blockSymbol, blockIndex);
-                    var laterTrace = TraceBlocks (setjmpInfo.LaterBlock, blockSymbol, blockIndex);
-                    var common = new List<Symbol> (initialTrace);
-                    for (var i = 0; i < common.Count;) {
+                    var initialTrace = TraceBlocks(setjmpInfo.InitialBlock, blockSymbol, blockIndex);
+                    var laterTrace = TraceBlocks(setjmpInfo.LaterBlock, blockSymbol, blockIndex);
+                    var common = new List<Symbol>(initialTrace);
+                    for (var i = 0; i < common.Count;)
+                    {
                         var s = common[i];
-                        if (laterTrace.Contains (s)) {
+                        if (laterTrace.Contains(s))
+                        {
                             i++;
                         }
-                        else {
-                            common.RemoveAt (i);
+                        else
+                        {
+                            common.RemoveAt(i);
                         }
                     }
-                    setjmpInfo.ExitBlockSymbol = common.FirstOrDefault ();
-                    setjmpInfo.InitialBlocks = new List<Symbol> (initialTrace);
-                    for (var i = 0; i < setjmpInfo.InitialBlocks.Count;) {
-                        if (common.Contains (setjmpInfo.InitialBlocks[i])) {
-                            setjmpInfo.InitialBlocks.RemoveAt (i);
+                    setjmpInfo.ExitBlockSymbol = common.FirstOrDefault();
+                    setjmpInfo.InitialBlocks = new List<Symbol>(initialTrace);
+                    for (var i = 0; i < setjmpInfo.InitialBlocks.Count;)
+                    {
+                        if (common.Contains(setjmpInfo.InitialBlocks[i]))
+                        {
+                            setjmpInfo.InitialBlocks.RemoveAt(i);
                         }
-                        else {
+                        else
+                        {
                             i++;
                         }
                     }
-                    setjmpInfo.LaterBlocks = new List<Symbol> (laterTrace);
-                    for (var i = 0; i < setjmpInfo.LaterBlocks.Count;) {
-                        if (common.Contains (setjmpInfo.LaterBlocks[i])) {
-                            setjmpInfo.LaterBlocks.RemoveAt (i);
+                    setjmpInfo.LaterBlocks = new List<Symbol>(laterTrace);
+                    for (var i = 0; i < setjmpInfo.LaterBlocks.Count;)
+                    {
+                        if (common.Contains(setjmpInfo.LaterBlocks[i]))
+                        {
+                            setjmpInfo.LaterBlocks.RemoveAt(i);
                         }
-                        else {
+                        else
+                        {
                             i++;
                         }
                     }
@@ -837,31 +914,33 @@ namespace Iril
                     //
                     // 3. recursively look for setjmps in the initial and later blocks
                     //
-                    FindSetjmps (setjmpInfo.InitialBlocks, blockIndex);
-                    FindSetjmps (setjmpInfo.LaterBlocks, blockIndex);
+                    FindSetjmps(setjmpInfo.InitialBlocks, blockIndex);
+                    FindSetjmps(setjmpInfo.LaterBlocks, blockIndex);
 
                     //
                     // 4. remove the used blocks from block index
                     //
                     foreach (var b in setjmpInfo.InitialBlocks)
-                        blockIndex.Remove (b);
+                        blockIndex.Remove(b);
                     foreach (var b in setjmpInfo.LaterBlocks)
-                        blockIndex.Remove (b);
+                        blockIndex.Remove(b);
 
                     //
                     // 5. enqueue the exit block to keep looking for other setjmps
                     //
                     var exit = setjmpInfo.ExitBlockSymbol;
-                    if (exit != null && blockIndex.ContainsKey (exit) && !analyzed.Contains(exit) && !needsAnalysis.Contains(exit))
-                        needsAnalysis.Enqueue (exit);
+                    if (exit != null && blockIndex.ContainsKey(exit) && !analyzed.Contains(exit) && !needsAnalysis.Contains(exit))
+                        needsAnalysis.Enqueue(exit);
                 }
-                else {
+                else
+                {
                     //
                     // If not found, keep tracing
                     //
-                    foreach (var n in block.Terminator.NextLabelSymbols) {
-                        if (blockIndex.ContainsKey (n) && !analyzed.Contains (n) && !needsAnalysis.Contains (n))
-                            needsAnalysis.Enqueue (n);
+                    foreach (var n in block.Terminator.NextLabelSymbols)
+                    {
+                        if (blockIndex.ContainsKey(n) && !analyzed.Contains(n) && !needsAnalysis.Contains(n))
+                            needsAnalysis.Enqueue(n);
                     }
                 }
             }
@@ -882,33 +961,35 @@ namespace Iril
             public CecilInstruction TryStart, TryLast, CatchLast;
         }
 
-        List<Symbol> TraceBlocks (Symbol firstBlockSymbol, Symbol terminator, SymbolTable<Block> blocks)
+        List<Symbol> TraceBlocks(Symbol firstBlockSymbol, Symbol terminator, SymbolTable<Block> blocks)
         {
-            var r = new List<Symbol> ();
-            var visited = new SymbolSet ();
-            var tovisit = new SymbolQueue ();
-            tovisit.Enqueue (firstBlockSymbol);
-            while (tovisit.Count > 0) {
-                var blockSymbol = tovisit.Dequeue ();
-                if (visited.Contains (blockSymbol))
+            var r = new List<Symbol>();
+            var visited = new SymbolSet();
+            var tovisit = new SymbolQueue();
+            tovisit.Enqueue(firstBlockSymbol);
+            while (tovisit.Count > 0)
+            {
+                var blockSymbol = tovisit.Dequeue();
+                if (visited.Contains(blockSymbol))
                     continue;
-                visited.Add (blockSymbol);
+                visited.Add(blockSymbol);
                 if (terminator != null && blockSymbol == terminator)
                     continue;
-                if (!blocks.TryGetValue (blockSymbol, out var block))
+                if (!blocks.TryGetValue(blockSymbol, out var block))
                     continue;
 
-                r.Add (blockSymbol);
+                r.Add(blockSymbol);
 
-                foreach (var n in block.Terminator.NextLabelSymbols) {
-                    if (!visited.Contains (n) && !tovisit.Contains (n))
-                        tovisit.Enqueue (n);
+                foreach (var n in block.Terminator.NextLabelSymbols)
+                {
+                    if (!visited.Contains(n) && !tovisit.Contains(n))
+                        tovisit.Enqueue(n);
                 }
             }
             return r;
         }
 
-        void EmitPhis (List<(Assignment Assignment, PhiInstruction Phi, Value Value)> phiVs)
+        void EmitPhis(List<(Assignment Assignment, PhiInstruction Phi, Value Value)> phiVs)
         {
             // Recursive phis need to be handled specially
             // Make sure to emit all reads before overwriting the phi
@@ -990,7 +1071,8 @@ namespace Iril
                     {
                         EmitVectorOp(OpCodes.Add, add.Op1, add.Op2, (Types.VectorType)add.Type);
                     }
-                    else if (add.IsAtomic) {
+                    else if (add.IsAtomic)
+                    {
                         EmitAtomicOp(OpCodes.Add, add.Op1, add.Op2, add.Type);
                     }
                     else
@@ -998,35 +1080,38 @@ namespace Iril
                         EmitValue(add.Op1, add.Type);
                         EmitValue(add.Op2, add.Type);
                         Emit(il.Create(OpCodes.Add));
-                        if (add.Type is IntegerType intt) {
+                        if (add.Type is IntegerType intt)
+                        {
                             var bits = intt.Bits;
-                            var upBits = Compilation.RoundUpIntBits (bits);
-                            switch (upBits) {
+                            var upBits = Compilation.RoundUpIntBits(bits);
+                            switch (upBits)
+                            {
                                 case 8:
-                                    Emit (il.Create (OpCodes.Conv_U1));
+                                    Emit(il.Create(OpCodes.Conv_U1));
                                     break;
                                 case 16:
-                                    Emit (il.Create (OpCodes.Conv_I2));
+                                    Emit(il.Create(OpCodes.Conv_I2));
                                     break;
                             }
                         }
                     }
                     break;
                 case IR.AllocaInstruction alloca:
-                    EmitAllocaSize (alloca);
-                    Emit (il.Create (OpCodes.Localloc));
+                    EmitAllocaSize(alloca);
+                    Emit(il.Create(OpCodes.Localloc));
 
-                    if (compilation.Options.SafeMemory) {
-                        var v = new VariableDefinition (compilation.sysBytePtr);
-                        body.Variables.Add (v);
-                        allocas.Add (assignedSymbol, v);
-                        Emit (il.Create (OpCodes.Dup));
-                        Emit (il.Create (OpCodes.Stloc, v));
-                        Emit (il.Create (OpCodes.Ldloc, v));
-                        EmitAllocaSize (alloca);
-                        Emit (il.Create (OpCodes.Conv_I8));
-                        Emit (il.Create (OpCodes.Ldstr, $"{function.Symbol}.alloca"));
-                        Emit (il.Create (OpCodes.Call, compilation.GetSystemMethod ("@_register_memory")));
+                    if (compilation.Options.SafeMemory)
+                    {
+                        var v = new VariableDefinition(compilation.sysBytePtr);
+                        body.Variables.Add(v);
+                        allocas.Add(assignedSymbol, v);
+                        Emit(il.Create(OpCodes.Dup));
+                        Emit(il.Create(OpCodes.Stloc, v));
+                        Emit(il.Create(OpCodes.Ldloc, v));
+                        EmitAllocaSize(alloca);
+                        Emit(il.Create(OpCodes.Conv_I8));
+                        Emit(il.Create(OpCodes.Ldstr, $"{function.Symbol}.alloca"));
+                        Emit(il.Create(OpCodes.Call, compilation.GetSystemMethod("@_register_memory")));
                     }
                     break;
                 case IR.AndInstruction and:
@@ -1041,10 +1126,13 @@ namespace Iril
                         Emit(il.Create(OpCodes.And));
                     }
                     break;
-                case IR.AshrInstruction ashr: {
+                case IR.AshrInstruction ashr:
+                    {
                         var shiftType = ashr.Type;
-                        if (ashr.Type is IntegerType intt) {
-                            switch (Compilation.RoundUpIntBits (intt.Bits)) {
+                        if (ashr.Type is IntegerType intt)
+                        {
+                            switch (Compilation.RoundUpIntBits(intt.Bits))
+                            {
                                 case 8:
                                 case 16:
                                 case 32:
@@ -1055,9 +1143,9 @@ namespace Iril
                                     break;
                             }
                         }
-                        EmitSext (shiftType, new TypedValue (ashr.Type, ashr.Op1));
-                        EmitValue (ashr.Op2, Types.IntegerType.I32);
-                        Emit (il.Create (OpCodes.Shr));
+                        EmitSext(shiftType, new TypedValue(ashr.Type, ashr.Op1));
+                        EmitValue(ashr.Op2, Types.IntegerType.I32);
+                        Emit(il.Create(OpCodes.Shr));
                     }
                     break;
                 case IR.BitcastInstruction bitcast:
@@ -1067,27 +1155,32 @@ namespace Iril
                 case IR.CallInstruction call:
                     EmitCall(call, block);
                     break;
-                case IR.ConditionalBrInstruction cbr: {
-                        var trueDest = GetLabel (cbr.IfTrue, block, context);
+                case IR.ConditionalBrInstruction cbr:
+                    {
+                        var trueDest = GetLabel(cbr.IfTrue, block, context);
                         CecilInstruction leaveDest = null;
-                        if (context.IsExceptionHandler && !context.IsProtecting (cbr.IfTrue)) {
-                            leaveDest = il.Create (OpCodes.Leave, trueDest);
-                            EmitBrtrue (cbr.Condition, Types.IntegerType.I1, leaveDest);
+                        if (context.IsExceptionHandler && !context.IsProtecting(cbr.IfTrue))
+                        {
+                            leaveDest = il.Create(OpCodes.Leave, trueDest);
+                            EmitBrtrue(cbr.Condition, Types.IntegerType.I1, leaveDest);
                         }
-                        else {
-                            EmitBrtrue (cbr.Condition, Types.IntegerType.I1, trueDest);
+                        else
+                        {
+                            EmitBrtrue(cbr.Condition, Types.IntegerType.I1, trueDest);
                         }
                         //if (cbr.IfFalse.Symbol != nextBlock?.Symbol)
-                        var falseDest = GetLabel (cbr.IfFalse, block, context);
-                        if (context.IsExceptionHandler && !context.IsProtecting (cbr.IfFalse)) {
+                        var falseDest = GetLabel(cbr.IfFalse, block, context);
+                        if (context.IsExceptionHandler && !context.IsProtecting(cbr.IfFalse))
+                        {
                             // Console.WriteLine ("EMIT FALSE");
-                            Emit (il.Create (OpCodes.Leave, falseDest));
+                            Emit(il.Create(OpCodes.Leave, falseDest));
                         }
-                        else {
-                            Emit (il.Create (OpCodes.Br, falseDest));
+                        else
+                        {
+                            Emit(il.Create(OpCodes.Br, falseDest));
                         }
                         if (leaveDest != null)
-                            Emit (leaveDest);
+                            Emit(leaveDest);
                     }
                     break;
                 case IR.DivInstruction div:
@@ -1105,19 +1198,21 @@ namespace Iril
                 case IR.ExtractElementInstruction ee:
                     {
                         EmitTypedValue(ee.Value);
-                        if (ee.Index.Value is IR.Constant c) {
+                        if (ee.Index.Value is IR.Constant c)
+                        {
                             var index = c.Int32Value;
                             var v = GetVectorType((VectorType)ee.Value.Type);
                             var field = v.ElementFields[index];
                             Emit(il.Create(OpCodes.Ldfld, field));
                         }
-                        else {
-                            throw new NotSupportedException ($"Cannot ExtractElement with non-constant index {ee.Index.Value} ({ee.Index.Value.GetType ()})");
+                        else
+                        {
+                            throw new NotSupportedException($"Cannot ExtractElement with non-constant index {ee.Index.Value} ({ee.Index.Value.GetType()})");
                         }
                     }
                     break;
                 case IR.ExtractValueInstruction ee:
-                    EmitExtractValue (ee.Value, ee.Indices);
+                    EmitExtractValue(ee.Value, ee.Indices);
                     break;
                 case IR.FaddInstruction fadd:
                     if (fadd.Type is Types.VectorType)
@@ -1182,7 +1277,7 @@ namespace Iril
                     switch (fptosi.Type)
                     {
                         case Types.IntegerType intt:
-                            switch (Compilation.RoundUpIntBits (intt.Bits))
+                            switch (Compilation.RoundUpIntBits(intt.Bits))
                             {
                                 case 8:
                                     Emit(il.Create(OpCodes.Conv_I1));
@@ -1207,7 +1302,7 @@ namespace Iril
                     switch (fptoui.Type)
                     {
                         case Types.IntegerType intt:
-                            switch (Compilation.RoundUpIntBits (intt.Bits))
+                            switch (Compilation.RoundUpIntBits(intt.Bits))
                             {
                                 case 8:
                                     Emit(il.Create(OpCodes.Conv_U1));
@@ -1246,10 +1341,10 @@ namespace Iril
                     EmitIcmp(icmp);
                     break;
                 case IR.InsertElementInstruction ie:
-                    EmitInsertElement (ie.Value, ie.Element, ie.Index);
+                    EmitInsertElement(ie.Value, ie.Element, ie.Index);
                     break;
                 case IR.InsertValueInstruction iv:
-                    EmitInsertValue (iv.Value, iv.Element, iv.Indices);
+                    EmitInsertValue(iv.Value, iv.Element, iv.Indices);
                     break;
                 case IR.InttoptrInstruction inttoptr:
                     EmitTypedValue(inttoptr.Value);
@@ -1263,26 +1358,28 @@ namespace Iril
                     }
                     break;
                 case IR.InvokeInstruction invoke:
-                    EmitInvoke (assignedSymbol, invoke, block, context);
+                    EmitInvoke(assignedSymbol, invoke, block, context);
                     break;
                 case IR.LandingPadInstruction landing:
-                    if (locals.TryGetValue (assignedSymbol, out var _)) {
-                        var locData = GetStructTempLocal (landing.Type);
-                        Emit (il.Create (OpCodes.Ldloca, locData));
-                        Emit (il.Create (OpCodes.Initobj, locData.VariableType));
-                        Emit (il.Create (OpCodes.Isinst, compilation.nativeException.Value));
-                        Emit (OpCodes.Dup);
-                        Emit (il.Create (OpCodes.Stloc, nativeExceptionLocal.Value));
-                        var next = il.Create (OpCodes.Ldloc, locData);
-                        Emit (il.Create (OpCodes.Brfalse, next));
-                        Emit (il.Create (OpCodes.Ldloc, nativeExceptionLocal.Value));
-                        Emit (il.Create (OpCodes.Ldfld, compilation.nativeExceptionData));
-                        Emit (il.Create (OpCodes.Unbox_Any, locData.VariableType));
-                        Emit (il.Create (OpCodes.Stloc, locData));
-                        Emit (next);
+                    if (locals.TryGetValue(assignedSymbol, out var _))
+                    {
+                        var locData = GetStructTempLocal(landing.Type);
+                        Emit(il.Create(OpCodes.Ldloca, locData));
+                        Emit(il.Create(OpCodes.Initobj, locData.VariableType));
+                        Emit(il.Create(OpCodes.Isinst, compilation.nativeException.Value));
+                        Emit(OpCodes.Dup);
+                        Emit(il.Create(OpCodes.Stloc, nativeExceptionLocal.Value));
+                        var next = il.Create(OpCodes.Ldloc, locData);
+                        Emit(il.Create(OpCodes.Brfalse, next));
+                        Emit(il.Create(OpCodes.Ldloc, nativeExceptionLocal.Value));
+                        Emit(il.Create(OpCodes.Ldfld, compilation.nativeExceptionData));
+                        Emit(il.Create(OpCodes.Unbox_Any, locData.VariableType));
+                        Emit(il.Create(OpCodes.Stloc, locData));
+                        Emit(next);
                     }
-                    else {
-                        Emit (OpCodes.Pop);
+                    else
+                    {
+                        Emit(OpCodes.Pop);
                     }
                     break;
                 case IR.LoadInstruction load:
@@ -1311,7 +1408,8 @@ namespace Iril
                     switch (zext.Type)
                     {
                         case Types.IntegerType intt:
-                            switch (Compilation.RoundUpIntBits (intt.Bits)) {
+                            switch (Compilation.RoundUpIntBits(intt.Bits))
+                            {
                                 case 8:
                                     Emit(il.Create(OpCodes.Conv_I1));
                                     break;
@@ -1331,30 +1429,32 @@ namespace Iril
                     }
                     break;
                 case IR.ResumeInstruction resume:
-                    Emit (il.Create (OpCodes.Rethrow));
+                    Emit(il.Create(OpCodes.Rethrow));
                     break;
                 case IR.RetInstruction ret:
                     EmitTypedValue(ret.Value);
-                    if (ShouldTrace >= 1 && !(ret.Value.Type is VoidType)) {
-                        Emit (il.Create (OpCodes.Ldc_I4, 32));
-                        Emit (il.Create (OpCodes.Newobj, compilation.sysStackTraceCtor));
-                        Emit (il.Create (OpCodes.Callvirt, compilation.sysStackTraceGetFrameCount));
-                        Emit (il.Create (OpCodes.Ldc_I4, 4));
-                        Emit (il.Create (OpCodes.Mul));
-                        Emit (il.Create (OpCodes.Newobj, compilation.sysStringCharCountCtor));
-                        Emit (il.Create (OpCodes.Call, compilation.sysConsoleWrite));
-                        Emit (il.Create (OpCodes.Ldstr, "= "));
-                        Emit (il.Create (OpCodes.Call, compilation.sysConsoleWrite));
-                        Emit (il.Create (OpCodes.Dup));
-                        EmitBox (ret.Value.Type);
-                        Emit (il.Create (OpCodes.Call, compilation.sysConsoleWriteObj));
-                        Emit (il.Create (OpCodes.Ldstr, ""));
-                        Emit (il.Create (OpCodes.Call, compilation.sysConsoleWriteLine));
+                    if (ShouldTrace >= 1 && !(ret.Value.Type is VoidType))
+                    {
+                        Emit(il.Create(OpCodes.Ldc_I4, 32));
+                        Emit(il.Create(OpCodes.Newobj, compilation.sysStackTraceCtor));
+                        Emit(il.Create(OpCodes.Callvirt, compilation.sysStackTraceGetFrameCount));
+                        Emit(il.Create(OpCodes.Ldc_I4, 4));
+                        Emit(il.Create(OpCodes.Mul));
+                        Emit(il.Create(OpCodes.Newobj, compilation.sysStringCharCountCtor));
+                        Emit(il.Create(OpCodes.Call, compilation.sysConsoleWrite));
+                        Emit(il.Create(OpCodes.Ldstr, "= "));
+                        Emit(il.Create(OpCodes.Call, compilation.sysConsoleWrite));
+                        Emit(il.Create(OpCodes.Dup));
+                        EmitBox(ret.Value.Type);
+                        Emit(il.Create(OpCodes.Call, compilation.sysConsoleWriteObj));
+                        Emit(il.Create(OpCodes.Ldstr, ""));
+                        Emit(il.Create(OpCodes.Call, compilation.sysConsoleWriteLine));
                     }
-                    if (compilation.Options.SafeMemory) {
-                        EmitUnregisterAllocas ();
+                    if (compilation.Options.SafeMemory)
+                    {
+                        EmitUnregisterAllocas();
                     }
-                    Emit (il.Create(OpCodes.Ret));
+                    Emit(il.Create(OpCodes.Ret));
                     break;
                 case IR.SdivInstruction sdiv:
                     if (sdiv.Type is Types.VectorType)
@@ -1369,7 +1469,7 @@ namespace Iril
                     }
                     break;
                 case IR.SextInstruction sext:
-                    EmitSext (sext.Type, sext.Value);
+                    EmitSext(sext.Type, sext.Value);
                     break;
                 case IR.SelectInstruction sel:
                     if (sel.Type is VectorType selV)
@@ -1472,7 +1572,8 @@ namespace Iril
                     {
                         EmitVectorOp(OpCodes.Sub, sub.Op1, sub.Op2, (Types.VectorType)sub.Type);
                     }
-                    else if (sub.IsAtomic) {
+                    else if (sub.IsAtomic)
+                    {
                         EmitAtomicOp(OpCodes.Sub, sub.Op1, sub.Op2, sub.Type);
                     }
                     else
@@ -1489,29 +1590,32 @@ namespace Iril
                     EmitTypedValue(trunc.Value);
                     switch (trunc.Type)
                     {
-                        case Types.IntegerType intt: {
+                        case Types.IntegerType intt:
+                            {
                                 int nbits = 0;
-                                switch (Compilation.RoundUpIntBits (intt.Bits)) {
+                                switch (Compilation.RoundUpIntBits(intt.Bits))
+                                {
                                     case 8:
                                         nbits = 8;
-                                        Emit (il.Create (OpCodes.Conv_U1));
+                                        Emit(il.Create(OpCodes.Conv_U1));
                                         break;
                                     case 16:
                                         nbits = 16;
-                                        Emit (il.Create (OpCodes.Conv_U2));
+                                        Emit(il.Create(OpCodes.Conv_U2));
                                         break;
                                     case 32:
                                         nbits = 32;
-                                        Emit (il.Create (OpCodes.Conv_U4));
+                                        Emit(il.Create(OpCodes.Conv_U4));
                                         break;
                                     default:
                                         nbits = 64;
-                                        Emit (il.Create (OpCodes.Conv_U8));
+                                        Emit(il.Create(OpCodes.Conv_U8));
                                         break;
                                 }
-                                if (intt.Bits < nbits) {
-                                    EmitValue (IntegerConstant.MaskBits (intt.Bits), IntegerType.WithBits (nbits));
-                                    Emit (il.Create (OpCodes.And));
+                                if (intt.Bits < nbits)
+                                {
+                                    EmitValue(IntegerConstant.MaskBits(intt.Bits), IntegerType.WithBits(nbits));
+                                    Emit(il.Create(OpCodes.And));
                                 }
                             }
                             break;
@@ -1550,24 +1654,29 @@ namespace Iril
                             throw new NotSupportedException($"Cannot uitofp {uitofp.Type}");
                     }
                     break;
-                case IR.UnconditionalBrInstruction br: {
-                        var destination = GetLabel (br.Destination, block, context);
-                        if (context.IsExceptionHandler && !context.IsProtecting (br.Destination)) {
-                            Emit (il.Create (OpCodes.Leave, destination));
+                case IR.UnconditionalBrInstruction br:
+                    {
+                        var destination = GetLabel(br.Destination, block, context);
+                        if (context.IsExceptionHandler && !context.IsProtecting(br.Destination))
+                        {
+                            Emit(il.Create(OpCodes.Leave, destination));
                         }
-                        else {
-                            Emit (il.Create (OpCodes.Br, destination));
+                        else
+                        {
+                            Emit(il.Create(OpCodes.Br, destination));
                         }
                     }
                     break;
                 case IR.UnreachableInstruction unreach:
-                    if (compilation.Options.SafeMemory) {
-                        EmitUnregisterAllocas ();
+                    if (compilation.Options.SafeMemory)
+                    {
+                        EmitUnregisterAllocas();
                     }
-                    if (!function.IRDefinition.ReturnType.StructurallyEquals (VoidType.Void)) {
-                        EmitZeroValue (function.IRDefinition.ReturnType);
+                    if (!function.IRDefinition.ReturnType.StructurallyEquals(VoidType.Void))
+                    {
+                        EmitZeroValue(function.IRDefinition.ReturnType);
                     }
-                    Emit (OpCodes.Ret);
+                    Emit(OpCodes.Ret);
                     break;
                 case IR.UremInstruction urem:
                     if (urem.Type is Types.VectorType)
@@ -1598,7 +1707,8 @@ namespace Iril
                     switch (zext.Type)
                     {
                         case Types.IntegerType intt:
-                            switch (Compilation.RoundUpIntBits (intt.Bits)) {
+                            switch (Compilation.RoundUpIntBits(intt.Bits))
+                            {
                                 case 8:
                                     Emit(il.Create(OpCodes.Conv_U1));
                                     break;
@@ -1622,130 +1732,151 @@ namespace Iril
             }
         }
 
-        void EmitSext (LType resultType, TypedValue inputValue)
+        void EmitSext(LType resultType, TypedValue inputValue)
         {
-            switch (resultType) {
-                case Types.IntegerType intt: {
+            switch (resultType)
+            {
+                case Types.IntegerType intt:
+                    {
                         var toBits = intt.Bits;
-                        var toUpBits = Compilation.RoundUpIntBits (toBits);
-                        EmitTypedValue (inputValue);
-                        if (inputValue.Type is Types.IntegerType sintt) {
+                        var toUpBits = Compilation.RoundUpIntBits(toBits);
+                        EmitTypedValue(inputValue);
+                        if (inputValue.Type is Types.IntegerType sintt)
+                        {
                             var fromBits = sintt.Bits;
-                            var fromUpBits = Compilation.RoundUpIntBits (fromBits);
+                            var fromUpBits = Compilation.RoundUpIntBits(fromBits);
                             if (fromBits == fromUpBits && toBits == toUpBits && fromBits == toBits)
                                 return;
 
-                            if (fromUpBits == 8) {
-                                Emit (il.Create (OpCodes.Conv_I1));
+                            if (fromUpBits == 8)
+                            {
+                                Emit(il.Create(OpCodes.Conv_I1));
                             }
 
                             var d = toUpBits - fromBits;
 
-                            switch (toUpBits) {
+                            switch (toUpBits)
+                            {
                                 case 8:
-                                    if (d == 0) {
-                                        Emit (il.Create (OpCodes.Conv_I1));
+                                    if (d == 0)
+                                    {
+                                        Emit(il.Create(OpCodes.Conv_I1));
                                     }
-                                    else {
-                                        Emit (il.Create (OpCodes.Conv_I4));
-                                        Emit (il.Create (OpCodes.Ldc_I4, d + 24));
-                                        Emit (il.Create (OpCodes.Shl));
-                                        Emit (il.Create (OpCodes.Ldc_I4, d + 24));
-                                        Emit (il.Create (OpCodes.Shr));
-                                        Emit (il.Create (OpCodes.Conv_I1));
+                                    else
+                                    {
+                                        Emit(il.Create(OpCodes.Conv_I4));
+                                        Emit(il.Create(OpCodes.Ldc_I4, d + 24));
+                                        Emit(il.Create(OpCodes.Shl));
+                                        Emit(il.Create(OpCodes.Ldc_I4, d + 24));
+                                        Emit(il.Create(OpCodes.Shr));
+                                        Emit(il.Create(OpCodes.Conv_I1));
                                     }
                                     break;
                                 case 16:
-                                    if (d == 0) {
-                                        Emit (il.Create (OpCodes.Conv_I2));
+                                    if (d == 0)
+                                    {
+                                        Emit(il.Create(OpCodes.Conv_I2));
                                     }
-                                    else {
-                                        Emit (il.Create (OpCodes.Conv_I4));
-                                        Emit (il.Create (OpCodes.Ldc_I4, d + 16));
-                                        Emit (il.Create (OpCodes.Shl));
-                                        Emit (il.Create (OpCodes.Ldc_I4, d + 16));
-                                        Emit (il.Create (OpCodes.Shr));
-                                        Emit (il.Create (OpCodes.Conv_I2));
+                                    else
+                                    {
+                                        Emit(il.Create(OpCodes.Conv_I4));
+                                        Emit(il.Create(OpCodes.Ldc_I4, d + 16));
+                                        Emit(il.Create(OpCodes.Shl));
+                                        Emit(il.Create(OpCodes.Ldc_I4, d + 16));
+                                        Emit(il.Create(OpCodes.Shr));
+                                        Emit(il.Create(OpCodes.Conv_I2));
                                     }
                                     break;
                                 case 32:
-                                    if (d == 0) {
-                                        Emit (il.Create (OpCodes.Conv_I4));
+                                    if (d == 0)
+                                    {
+                                        Emit(il.Create(OpCodes.Conv_I4));
                                     }
-                                    else {
-                                        Emit (il.Create (OpCodes.Conv_I4));
-                                        Emit (il.Create (OpCodes.Ldc_I4, d));
-                                        Emit (il.Create (OpCodes.Shl));
-                                        Emit (il.Create (OpCodes.Ldc_I4, d));
-                                        Emit (il.Create (OpCodes.Shr));
+                                    else
+                                    {
+                                        Emit(il.Create(OpCodes.Conv_I4));
+                                        Emit(il.Create(OpCodes.Ldc_I4, d));
+                                        Emit(il.Create(OpCodes.Shl));
+                                        Emit(il.Create(OpCodes.Ldc_I4, d));
+                                        Emit(il.Create(OpCodes.Shr));
                                     }
                                     break;
                                 default:
-                                    if (d == 0) {
-                                        Emit (il.Create (OpCodes.Conv_I8));
+                                    if (d == 0)
+                                    {
+                                        Emit(il.Create(OpCodes.Conv_I8));
                                     }
-                                    else {
-                                        Emit (il.Create (OpCodes.Conv_I8));
-                                        Emit (il.Create (OpCodes.Ldc_I4, d));
-                                        Emit (il.Create (OpCodes.Shl));
-                                        Emit (il.Create (OpCodes.Ldc_I4, d));
-                                        Emit (il.Create (OpCodes.Shr));
+                                    else
+                                    {
+                                        Emit(il.Create(OpCodes.Conv_I8));
+                                        Emit(il.Create(OpCodes.Ldc_I4, d));
+                                        Emit(il.Create(OpCodes.Shl));
+                                        Emit(il.Create(OpCodes.Ldc_I4, d));
+                                        Emit(il.Create(OpCodes.Shr));
                                     }
                                     break;
                             }
                         }
-                        else {
-                            compilation.ErrorMessage (module.SourceFilename, $"Cannot sign extend from type {inputValue.Type} to {toBits}-bit integers");
+                        else
+                        {
+                            compilation.ErrorMessage(module.SourceFilename, $"Cannot sign extend from type {inputValue.Type} to {toBits}-bit integers");
                         }
                     }
                     break;
                 case VectorType vt when vt.ElementType is Types.IntegerType vintt:
-                    switch (vintt.Bits) {
+                    switch (vintt.Bits)
+                    {
                         case 1:
                         case 8:
-                            EmitVectorUnop (OpCodes.Conv_I1, inputValue, vt);
+                            EmitVectorUnop(OpCodes.Conv_I1, inputValue, vt);
                             break;
                         case 16:
-                            EmitVectorUnop (OpCodes.Conv_I2, inputValue, vt);
+                            EmitVectorUnop(OpCodes.Conv_I2, inputValue, vt);
                             break;
                         case 32:
-                            EmitVectorUnop (OpCodes.Conv_I4, inputValue, vt);
+                            EmitVectorUnop(OpCodes.Conv_I4, inputValue, vt);
                             break;
                         default:
-                            EmitVectorUnop (OpCodes.Conv_I8, inputValue, vt);
+                            EmitVectorUnop(OpCodes.Conv_I8, inputValue, vt);
                             break;
                     }
                     break;
                 default:
-                    throw new NotSupportedException ($"Cannot sext {resultType}");
+                    throw new NotSupportedException($"Cannot sext {resultType}");
             }
         }
 
-        private void EmitAllocaSize (AllocaInstruction alloca)
+        private void EmitAllocaSize(AllocaInstruction alloca)
         {
-            var byteSize = alloca.Type.GetByteSize (function.IRModule);
-            if (byteSize > 1) {
-                Emit (il.Create (OpCodes.Ldc_I4, (int)byteSize));
+            var byteSize = alloca.Type.GetByteSize(function.IRModule);
+            if (byteSize > 1)
+            {
+                Emit(il.Create(OpCodes.Ldc_I4, (int)byteSize));
             }
-            if (alloca.NumElements != null) {
-                EmitTypedValue (alloca.NumElements);
-                if (byteSize > 1) {
-                    Emit (il.Create (OpCodes.Mul));
+            if (alloca.NumElements != null)
+            {
+                EmitTypedValue(alloca.NumElements);
+                if (byteSize > 1)
+                {
+                    Emit(il.Create(OpCodes.Mul));
                 }
             }
-            else {
-                if (byteSize == 1) {
-                    Emit (il.Create (OpCodes.Ldc_I4_1));
+            else
+            {
+                if (byteSize == 1)
+                {
+                    Emit(il.Create(OpCodes.Ldc_I4_1));
                 }
             }
-            Emit (il.Create (OpCodes.Conv_U));
+            Emit(il.Create(OpCodes.Conv_U));
         }
 
-        void EmitUnregisterAllocas ()
+        void EmitUnregisterAllocas()
         {
-            foreach (var kv in allocas) {
-                Emit (il.Create (OpCodes.Ldloc, kv.Value));
-                Emit (il.Create (OpCodes.Call, compilation.GetSystemMethod ("@_unregister_memory")));
+            foreach (var kv in allocas)
+            {
+                Emit(il.Create(OpCodes.Ldloc, kv.Value));
+                Emit(il.Create(OpCodes.Call, compilation.GetSystemMethod("@_unregister_memory")));
             }
         }
 
@@ -1761,7 +1892,8 @@ namespace Iril
         private void EmitIcmp(IcmpInstruction icmp)
         {
             bool unsigned = true;
-            switch (icmp.Condition) {
+            switch (icmp.Condition)
+            {
                 case IR.IcmpCondition.SignedGreaterThan:
                 case IR.IcmpCondition.SignedGreaterThanOrEqual:
                 case IR.IcmpCondition.SignedLessThan:
@@ -1770,8 +1902,8 @@ namespace Iril
                     break;
             }
 
-            EmitValue (icmp.Op1, icmp.Type, unsigned: unsigned);
-            EmitValue (icmp.Op2, icmp.Type, unsigned: unsigned);
+            EmitValue(icmp.Op1, icmp.Type, unsigned: unsigned);
+            EmitValue(icmp.Op2, icmp.Type, unsigned: unsigned);
             if (icmp.Type is VectorType v)
             {
                 EmitVIcmp(icmp, v);
@@ -1979,7 +2111,7 @@ namespace Iril
                 if (function.ParamSyms.TryGetValue(local.Symbol, out var pd))
                 {
                     vt = pd.ParameterType;
-                    Emit (il.Create(OpCodes.Ldarg, pd));
+                    Emit(il.Create(OpCodes.Ldarg, pd));
                 }
                 else
                 {
@@ -1988,51 +2120,59 @@ namespace Iril
                 }
             }
 
-            var crt = compilation.GetClrType (resultType, module, unsigned: unsigned);
-            if (vt != null && crt.FullName != vt.FullName) {
-                if (resultType is Types.IntegerType intt) {
-                    if (unsigned.HasValue) {
-                        switch (Compilation.RoundUpIntBits (intt.Bits)) {
+            var crt = compilation.GetClrType(resultType, module, unsigned: unsigned);
+            if (vt != null && crt.FullName != vt.FullName)
+            {
+                if (resultType is Types.IntegerType intt)
+                {
+                    if (unsigned.HasValue)
+                    {
+                        switch (Compilation.RoundUpIntBits(intt.Bits))
+                        {
                             case 8:
-                                Emit (unsigned.Value ? OpCodes.Conv_U1 : OpCodes.Conv_I1);
+                                Emit(unsigned.Value ? OpCodes.Conv_U1 : OpCodes.Conv_I1);
                                 break;
                             case 16:
-                                Emit (unsigned.Value ? OpCodes.Conv_U2 : OpCodes.Conv_I2);
+                                Emit(unsigned.Value ? OpCodes.Conv_U2 : OpCodes.Conv_I2);
                                 break;
                             case 32:
-                                Emit (unsigned.Value ? OpCodes.Conv_U4 : OpCodes.Conv_I4);
+                                Emit(unsigned.Value ? OpCodes.Conv_U4 : OpCodes.Conv_I4);
                                 break;
                             case 64:
-                                Emit (unsigned.Value ? OpCodes.Conv_U8 : OpCodes.Conv_I8);
+                                Emit(unsigned.Value ? OpCodes.Conv_U8 : OpCodes.Conv_I8);
                                 break;
                             default:
-                                throw new NotSupportedException ($"Cannot emit integer type `{crt}` for local type `{vd.VariableType}`");
+                                throw new NotSupportedException($"Cannot emit integer type `{crt}` for local type `{vd.VariableType}`");
                         }
                     }
-                    else {
-                        switch (Compilation.RoundUpIntBits (intt.Bits)) {
+                    else
+                    {
+                        switch (Compilation.RoundUpIntBits(intt.Bits))
+                        {
                             case 8:
-                                Emit (OpCodes.Conv_U1);
+                                Emit(OpCodes.Conv_U1);
                                 break;
                             case 16:
-                                Emit (OpCodes.Conv_I2);
+                                Emit(OpCodes.Conv_I2);
                                 break;
                             case 32:
-                                Emit (OpCodes.Conv_I4);
+                                Emit(OpCodes.Conv_I4);
                                 break;
                             case 64:
-                                Emit (OpCodes.Conv_I8);
+                                Emit(OpCodes.Conv_I8);
                                 break;
                             default:
-                                throw new NotSupportedException ($"Cannot emit integer type `{crt}` for local type `{vd.VariableType}`");
+                                throw new NotSupportedException($"Cannot emit integer type `{crt}` for local type `{vd.VariableType}`");
                         }
                     }
                 }
-                else if (resultType is Types.PointerType) {
+                else if (resultType is Types.PointerType)
+                {
                     // OK
                 }
-                else {
-                    throw new NotSupportedException ($"Cannot emit type `{crt}` for local type `{vd.VariableType}`");
+                else
+                {
+                    throw new NotSupportedException($"Cannot emit type `{crt}` for local type `{vd.VariableType}`");
                 }
             }
         }
@@ -2056,11 +2196,11 @@ namespace Iril
                     var td = compilation.GetClrType(gepPointerType.ElementType, module: module).Resolve();
                     var fieldIndex = indexConst.Int32Value;
                     if (fieldIndex < 0 || fieldIndex >= td.Fields.Count)
-                        throw new IndexOutOfRangeException ($"Field #{fieldIndex} does not exist in {td.FullName} ({store})");
+                        throw new IndexOutOfRangeException($"Field #{fieldIndex} does not exist in {td.FullName} ({store})");
                     var field = td.Fields[fieldIndex];
 
                     EmitTypedValue(gep.Pointer);
-                    EmitVerifyWritePointer ();
+                    EmitVerifyWritePointer();
                     EmitTypedValue(store.Value);
                     Emit(il.Create(OpCodes.Stfld, field));
                     return;
@@ -2069,12 +2209,13 @@ namespace Iril
 
             var isfptr = store.Pointer.Type is Types.PointerType && ((Types.PointerType)store.Pointer.Type).ElementType is FunctionType;
 
-            EmitTypedValue (store.Pointer);
-            if (!isfptr) {
-                EmitVerifyWritePointer ();
+            EmitTypedValue(store.Pointer);
+            if (!isfptr)
+            {
+                EmitVerifyWritePointer();
             }
-            EmitTypedValue (store.Value);
-            EmitStind (store.Value.Type);
+            EmitTypedValue(store.Value);
+            EmitStind(store.Value.Type);
         }
 
         void EmitLoad(IR.LoadInstruction load, bool? unsigned)
@@ -2096,11 +2237,11 @@ namespace Iril
                     var td = compilation.GetClrType(gepPointerType.ElementType, module: module).Resolve();
                     var fieldIndex = indexConst.Int32Value;
                     if (fieldIndex < 0 || fieldIndex >= td.Fields.Count)
-                        throw new IndexOutOfRangeException ($"Field #{fieldIndex} does not exist in {td.FullName} ({load})");
+                        throw new IndexOutOfRangeException($"Field #{fieldIndex} does not exist in {td.FullName} ({load})");
                     var field = td.Fields[fieldIndex];
 
                     EmitTypedValue(gep.Pointer);
-                    EmitVerifyReadPointer ();
+                    EmitVerifyReadPointer();
                     Emit(il.Create(OpCodes.Ldfld, field));
                     return;
                 }
@@ -2110,45 +2251,54 @@ namespace Iril
 
             EmitTypedValue(load.Pointer);
 
-            if (!isfptr) {
-                EmitVerifyReadPointer ();
+            if (!isfptr)
+            {
+                EmitVerifyReadPointer();
             }
 
             var et = compilation.GetClrType(load.Type, module: module);
             if (load.Type is IntegerType intt)
             {
-                switch (Compilation.RoundUpIntBits (intt.Bits))
+                switch (Compilation.RoundUpIntBits(intt.Bits))
                 {
                     case 8:
-                        if (unsigned.HasValue && !unsigned.Value) {
-                            Emit (il.Create (OpCodes.Ldind_I1));
+                        if (unsigned.HasValue && !unsigned.Value)
+                        {
+                            Emit(il.Create(OpCodes.Ldind_I1));
                         }
-                        else {
-                            Emit (il.Create (OpCodes.Ldind_U1));
+                        else
+                        {
+                            Emit(il.Create(OpCodes.Ldind_U1));
                         }
                         break;
                     case 16:
-                        if (unsigned.HasValue && unsigned.Value) {
-                            Emit (il.Create (OpCodes.Ldind_U2));
+                        if (unsigned.HasValue && unsigned.Value)
+                        {
+                            Emit(il.Create(OpCodes.Ldind_U2));
                         }
-                        else {
-                            Emit (il.Create (OpCodes.Ldind_I2));
+                        else
+                        {
+                            Emit(il.Create(OpCodes.Ldind_I2));
                         }
                         break;
                     case 32:
-                        if (unsigned.HasValue && unsigned.Value) {
-                            Emit (il.Create (OpCodes.Ldind_U4));
+                        if (unsigned.HasValue && unsigned.Value)
+                        {
+                            Emit(il.Create(OpCodes.Ldind_U4));
                         }
-                        else {
-                            Emit (il.Create (OpCodes.Ldind_I4));
+                        else
+                        {
+                            Emit(il.Create(OpCodes.Ldind_I4));
                         }
                         break;
                     case 64:
-                        if (unsigned.HasValue && unsigned.Value) {
-                            Emit (il.Create (OpCodes.Ldind_I8));
+                        if (unsigned.HasValue && unsigned.Value)
+                        {
+                            Emit(il.Create(OpCodes.Ldind_I8));
                         }
-                        else {
-                            Emit (il.Create (OpCodes.Ldind_I8));
+                        else
+                        {
+                            Emit(il.Create(OpCodes.Ldind_I8));
                         }
                         break;
                     default:
@@ -2211,8 +2361,9 @@ namespace Iril
                     {
                         Emit(il.Create(OpCodes.Sub));
                     }
-                    if (!(sw.Value.Type is IntegerType intt && intt.Bits == 32)) {
-                        Emit (il.Create (OpCodes.Conv_U4));
+                    if (!(sw.Value.Type is IntegerType intt && intt.Bits == 32))
+                    {
+                        Emit(il.Create(OpCodes.Conv_U4));
                     }
                     Emit(il.Create(OpCodes.Switch, labels));
                     rem.RemoveRange(0, endIndex);
@@ -2260,18 +2411,22 @@ namespace Iril
         {
             if ((op == OpCodes.Add || op == OpCodes.Sub) &&
                 op2 is IR.Constant c2 && c2.Int32Value == 1 &&
-                type1 is Types.PointerType ptype && ptype.ElementType is Types.IntegerType itype && (itype.Bits == 32 || itype.Bits == 64)) {
+                type1 is Types.PointerType ptype && ptype.ElementType is Types.IntegerType itype && (itype.Bits == 32 || itype.Bits == 64))
+            {
                 var method = compilation.sysInterlockedIncrement32;
-                if (itype.Bits == 64) {
+                if (itype.Bits == 64)
+                {
                     method = op == OpCodes.Add ? compilation.sysInterlockedIncrement64 : compilation.sysInterlockedDecrement64;
                 }
-                else {
+                else
+                {
                     method = op == OpCodes.Add ? compilation.sysInterlockedIncrement32 : compilation.sysInterlockedDecrement32;
                 }
                 EmitValue(op1, type1);
                 Emit(il.Create(OpCodes.Call, method));
             }
-            else {
+            else
+            {
                 throw new NotSupportedException($"Cannot perform atomic op {op.Code} with {op1}: {type1} and {op2}");
             }
         }
@@ -2365,47 +2520,54 @@ namespace Iril
             Emit(il.Create(OpCodes.Brtrue, trueTarget));
         }
 
-        void EmitInvoke (LocalSymbol assignedSymbol, IR.InvokeInstruction invoke, IR.Block block, BlocksContext context)
+        void EmitInvoke(LocalSymbol assignedSymbol, IR.InvokeInstruction invoke, IR.Block block, BlocksContext context)
         {
             var tryPrev = prev;
             TypeReference returnType;
 
             if ((invoke.Pointer is IR.GlobalValue gv)
-                && (compilation.TryGetFunction (module, gv.Symbol, out var m))) {
+                && (compilation.TryGetFunction(module, gv.Symbol, out var m)))
+            {
 
                 var ps = m.ILDefinition.Parameters;
                 var nps = ps.Count;
                 var hasVarArgs =
                     nps > 0
                     && ps[nps - 1].ParameterType.IsArray
-                    && ps[nps - 1].ParameterType.GetElementType ().FullName == "System.Object";
+                    && ps[nps - 1].ParameterType.GetElementType().FullName == "System.Object";
                 if (hasVarArgs)
                     nps--;
-                if (invoke.Arguments.Length < nps) {
-                    throw new InvalidOperationException ($"Too few arguments to {function.IRDefinition.Symbol}");
+                if (invoke.Arguments.Length < nps)
+                {
+                    throw new InvalidOperationException($"Too few arguments to {function.IRDefinition.Symbol}");
                 }
 
-                for (var i = 0; i < nps; i++) {
+                for (var i = 0; i < nps; i++)
+                {
                     var a = invoke.Arguments[i];
-                    EmitValue (a.Value, a.Type);
+                    EmitValue(a.Value, a.Type);
                 }
-                if (hasVarArgs) {
-                    EmitVarArgs (invoke.Arguments, nps);
+                if (hasVarArgs)
+                {
+                    EmitVarArgs(invoke.Arguments, nps);
                 }
 
-                Emit (il.Create (OpCodes.Call, m.ILDefinition));
+                Emit(il.Create(OpCodes.Call, m.ILDefinition));
 
                 returnType = m.ILDefinition.ReturnType;
 
             }
-            else if (invoke.Pointer is IR.LocalValue lv) {
+            else if (invoke.Pointer is IR.LocalValue lv)
+            {
                 LType ltype;
-                if (function.ParamSyms.TryGetValue (lv.Symbol, out var p)) {
-                    ltype = function.IRDefinition.Parameters.First (x => x.Symbol == lv.Symbol).ParameterType;
+                if (function.ParamSyms.TryGetValue(lv.Symbol, out var p))
+                {
+                    ltype = function.IRDefinition.Parameters.First(x => x.Symbol == lv.Symbol).ParameterType;
                 }
-                else {
-                    var lva = function.IRDefinition.GetAssignment (lv);
-                    ltype = lva.Instruction.ResultType (function.IRModule);
+                else
+                {
+                    var lva = function.IRDefinition.GetAssignment(lv);
+                    ltype = lva.Instruction.ResultType(function.IRModule);
                 }
                 var ft = (FunctionType)((Types.PointerType)ltype).ElementType;
                 var ps = ft.ParameterTypes;
@@ -2413,53 +2575,60 @@ namespace Iril
                 var hasVarArgs = nps > 0 && (ps[nps - 1] is VarArgsType);
                 if (hasVarArgs)
                     nps--;
-                if (invoke.Arguments.Length < nps) {
-                    throw new InvalidOperationException ($"Too few arguments to {function.IRDefinition.Symbol}");
+                if (invoke.Arguments.Length < nps)
+                {
+                    throw new InvalidOperationException($"Too few arguments to {function.IRDefinition.Symbol}");
                 }
-                EmitReentrantContext ();
-                for (var i = 0; i < nps; i++) {
+                EmitReentrantContext();
+                for (var i = 0; i < nps; i++)
+                {
                     var a = invoke.Arguments[i];
-                    EmitValue (a.Value, a.Type);
+                    EmitValue(a.Value, a.Type);
                 }
-                if (hasVarArgs) {
-                    EmitVarArgs (invoke.Arguments, nps);
+                if (hasVarArgs)
+                {
+                    EmitVarArgs(invoke.Arguments, nps);
                 }
 
-                EmitValue (lv, ltype);
-                var site = CreateCallSite (ft);
-                EmitCalli (site);
+                EmitValue(lv, ltype);
+                var site = CreateCallSite(ft);
+                EmitCalli(site);
 
                 returnType = site.ReturnType;
             }
-            else {
-                throw new Exception ($"Cannot invoke {invoke.Pointer}");
+            else
+            {
+                throw new Exception($"Cannot invoke {invoke.Pointer}");
             }
 
             // LLVM allows for return type mismatches with void
-            if (returnType.FullName == "System.Void" && !(invoke.ReturnType is VoidType)) {
-                EmitZeroValue (invoke.ReturnType);
+            if (returnType.FullName == "System.Void" && !(invoke.ReturnType is VoidType))
+            {
+                EmitZeroValue(invoke.ReturnType);
             }
-            else if (returnType.FullName != "System.Void" && (invoke.ReturnType is VoidType)) {
-                Emit (OpCodes.Pop);
+            else if (returnType.FullName != "System.Void" && (invoke.ReturnType is VoidType))
+            {
+                Emit(OpCodes.Pop);
             }
 
             // Assign it now
-            if (locals.TryGetValue (assignedSymbol, out var vd)) {
-                Emit (il.Create (OpCodes.Stloc, vd));
+            if (locals.TryGetValue(assignedSymbol, out var vd))
+            {
+                Emit(il.Create(OpCodes.Stloc, vd));
             }
 
-            Emit (il.Create (OpCodes.Leave, context.BlockFirstInstr[invoke.NormalLabel.Symbol]));
+            Emit(il.Create(OpCodes.Leave, context.BlockFirstInstr[invoke.NormalLabel.Symbol]));
 
             var tryLast = prev;
 
-            var catchContext = new BlocksContext (context, Enumerable.Empty<Symbol> ());
+            var catchContext = new BlocksContext(context, Enumerable.Empty<Symbol>());
 
             var pad = landingPads[invoke.ExceptionLabel.Symbol];
 
-            EmitBlocks (pad.Blocks, catchContext);
+            EmitBlocks(pad.Blocks, catchContext);
 
             var catchLast = prev;
-            ehs.Add ((tryPrev.Next, tryLast, catchLast));
+            ehs.Add((tryPrev.Next, tryLast, catchLast));
         }
 
         class LandingPad
@@ -2470,26 +2639,28 @@ namespace Iril
         }
 
         readonly List<(CecilInstruction TryStart, CecilInstruction TryLast, CecilInstruction CatchLast)> ehs =
-            new List<(CecilInstruction TryStart, CecilInstruction TryLast, CecilInstruction CatchLast)> ();
+            new List<(CecilInstruction TryStart, CecilInstruction TryLast, CecilInstruction CatchLast)>();
 
         readonly Lazy<TypeDefinition> UMulOverflowResultTypeI64;
 
-        TypeDefinition GetUMulOverflowResultType (LType valueType)
+        TypeDefinition GetUMulOverflowResultType(LType valueType)
         {
-            var irType = new LiteralStructureType (false, new LType[] { valueType, Types.IntegerType.I1 });
-            return compilation.GetClrType (irType, module: module).Resolve ();
+            var irType = new LiteralStructureType(false, new LType[] { valueType, Types.IntegerType.I1 });
+            return compilation.GetClrType(irType, module: module).Resolve();
         }
 
         void EmitCall(IR.CallInstruction call, Block fromBlock)
         {
-            if (call.Pointer is IR.GlobalValue gv) {
-                switch (gv.Symbol.Text) {
+            if (call.Pointer is IR.GlobalValue gv)
+            {
+                switch (gv.Symbol.Text)
+                {
                     case "@llvm.ceil.f64":
-                        EmitValue (call.Arguments[0].Value, call.Arguments[0].Type);
-                        Emit (il.Create (OpCodes.Call, compilation.sysMathCeilD));
+                        EmitValue(call.Arguments[0].Value, call.Arguments[0].Type);
+                        Emit(il.Create(OpCodes.Call, compilation.sysMathCeilD));
                         return;
                     case "@llvm.ceil.v2f64" when call.Arguments[0].Type is VectorType ceilVt:
-                        EmitVectorFunc (call.Arguments[0].Value, ceilVt, compilation.sysMathCeilD);
+                        EmitVectorFunc(call.Arguments[0].Value, ceilVt, compilation.sysMathCeilD);
                         return;
                     case "@llvm.dbg.declare":
                     case "@llvm.dbg.label":
@@ -2498,224 +2669,262 @@ namespace Iril
                         // call void @llvm.dbg.value(metadata %struct._parser_t* %3, metadata !1020, metadata !DIExpression(DW_OP_deref)), !dbg !1140
                         // !DILocalVariable (name: "parser", scope: !1013, file: !3, line: 871, type: !790)
                         if (call.Arguments.Length >= 2
-                            && call.Arguments[0].Value.ReferencedLocals.Count () > 0
+                            && call.Arguments[0].Value.ReferencedLocals.Count() > 0
                             && call.Arguments[1].Value is MetaValue meta
                             && module.Metadata.TryGetValue(meta.Symbol, out var o)
-                            && o is SymbolTable<object> metadata) {
-                            var local = call.Arguments[0].Value.ReferencedLocals.First ();
-                            AddLocalDebugInfo (fromBlock, local, metadata);
-                            if (metadata.TryGetValue (Symbol.Type, out o)
+                            && o is SymbolTable<object> metadata)
+                        {
+                            var local = call.Arguments[0].Value.ReferencedLocals.First();
+                            AddLocalDebugInfo(fromBlock, local, metadata);
+                            if (metadata.TryGetValue(Symbol.Type, out o)
                                 && o is MetaSymbol ts
-                                && module.Metadata.TryGetValue (ts, out o)
+                                && module.Metadata.TryGetValue(ts, out o)
                                 && o is SymbolTable<object> tdata
-                                ) {
-                                compilation.AddDebugInfoToStruct (call.Arguments[0].Type, module, tdata);
+                                )
+                            {
+                                compilation.AddDebugInfoToStruct(call.Arguments[0].Type, module, tdata);
                             }
                         }
                         return;
                     case "@llvm.fabs.f64":
-                        EmitValue (call.Arguments[0].Value, call.Arguments[0].Type);
-                        Emit (il.Create (OpCodes.Call, compilation.sysMathAbsD));
+                        EmitValue(call.Arguments[0].Value, call.Arguments[0].Type);
+                        Emit(il.Create(OpCodes.Call, compilation.sysMathAbsD));
+                        return;
+                    case "@llvm.floor.f64":
+                        EmitValue(call.Arguments[0].Value, call.Arguments[0].Type);
+                        Emit(il.Create(OpCodes.Call, compilation.sysMathFloorD));
+                        return;
+                    case "@llvm.fmuladd.f64":
+                        // fmuladd(a, b, c) = a * b + c  (fused multiply-add)
+                        EmitValue(call.Arguments[0].Value, call.Arguments[0].Type);
+                        EmitValue(call.Arguments[1].Value, call.Arguments[1].Type);
+                        Emit(il.Create(OpCodes.Mul));
+                        EmitValue(call.Arguments[2].Value, call.Arguments[2].Type);
+                        Emit(il.Create(OpCodes.Add));
+                        return;
+                    case "@llvm.fmuladd.f32":
+                        EmitValue(call.Arguments[0].Value, call.Arguments[0].Type);
+                        EmitValue(call.Arguments[1].Value, call.Arguments[1].Type);
+                        Emit(il.Create(OpCodes.Mul));
+                        EmitValue(call.Arguments[2].Value, call.Arguments[2].Type);
+                        Emit(il.Create(OpCodes.Add));
                         return;
                     case "@llvm.fshl.i64":
-                        EmitValue (call.Arguments[0].Value, call.Arguments[0].Type);
-                        EmitValue (call.Arguments[1].Value, call.Arguments[1].Type);
-                        EmitValue (call.Arguments[2].Value, call.Arguments[2].Type);
-                        Emit (il.Create (OpCodes.Call, compilation.GetSystemMethod (gv.Symbol)));
+                        EmitValue(call.Arguments[0].Value, call.Arguments[0].Type);
+                        EmitValue(call.Arguments[1].Value, call.Arguments[1].Type);
+                        EmitValue(call.Arguments[2].Value, call.Arguments[2].Type);
+                        Emit(il.Create(OpCodes.Call, compilation.GetSystemMethod(gv.Symbol)));
                         return;
                     case "@llvm.lifetime.start.p0i8":
                     case "@llvm.lifetime.end.p0i8":
                         return;
-                    case "@llvm.objectsize.i32.p0i8" when call.Arguments.Length >= 3: {
+                    case "@llvm.objectsize.i32.p0i8" when call.Arguments.Length >= 3:
+                        {
                             var min = 0;
-                            if (call.Arguments[1].Value is IR.Constant osizeConst) {
+                            if (call.Arguments[1].Value is IR.Constant osizeConst)
+                            {
                                 min = osizeConst.Int32Value;
                             }
-                            if (min == 0) {
-                                Emit (il.Create (OpCodes.Ldc_I4, -1));
+                            if (min == 0)
+                            {
+                                Emit(il.Create(OpCodes.Ldc_I4, -1));
                             }
-                            else {
-                                Emit (il.Create (OpCodes.Ldc_I4, 0));
+                            else
+                            {
+                                Emit(il.Create(OpCodes.Ldc_I4, 0));
                             }
                         }
                         return;
-                    case "@llvm.objectsize.i64.p0i8" when call.Arguments.Length >= 3: {
+                    case "@llvm.objectsize.i64.p0i8" when call.Arguments.Length >= 3:
+                        {
                             var min = 0;
-                            if (call.Arguments[1].Value is IR.Constant osizeConst) {
+                            if (call.Arguments[1].Value is IR.Constant osizeConst)
+                            {
                                 min = osizeConst.Int32Value;
                             }
-                            if (min == 0) {
-                                Emit (il.Create (OpCodes.Ldc_I8, -1L));
+                            if (min == 0)
+                            {
+                                Emit(il.Create(OpCodes.Ldc_I8, -1L));
                             }
-                            else {
-                                Emit (il.Create (OpCodes.Ldc_I8, 0L));
+                            else
+                            {
+                                Emit(il.Create(OpCodes.Ldc_I8, 0L));
                             }
                         }
                         return;
                     // declare void @llvm.memcpy.p0i8.p0i8.i32(i8* <dest>, i8* <src>,
                     //                                         i32 <len>, i1 <isvolatile>)
                     case "@llvm.memcpy.p0i8.p0i8.i32" when call.Arguments.Length >= 3:
-                        EmitValue (call.Arguments[0].Value, call.Arguments[0].Type);
-                        EmitValue (call.Arguments[1].Value, call.Arguments[1].Type);
-                        EmitValue (call.Arguments[2].Value, call.Arguments[2].Type);
-                        Emit (il.Create (OpCodes.Cpblk));
+                        EmitValue(call.Arguments[0].Value, call.Arguments[0].Type);
+                        EmitValue(call.Arguments[1].Value, call.Arguments[1].Type);
+                        EmitValue(call.Arguments[2].Value, call.Arguments[2].Type);
+                        Emit(il.Create(OpCodes.Cpblk));
                         return;
                     // declare void @llvm.memcpy.p0i8.p0i8.i64(i8* <dest>, i8* <src>,
                     //                                         i64 <len>, i1 <isvolatile>)
                     case "@llvm.memcpy.p0i8.p0i8.i64" when call.Arguments.Length >= 3:
-                        EmitValue (call.Arguments[0].Value, call.Arguments[0].Type);
-                        EmitValue (call.Arguments[1].Value, call.Arguments[1].Type);
-                        EmitValue (call.Arguments[2].Value, call.Arguments[2].Type);
-                        Emit (il.Create (OpCodes.Conv_U4));
-                        Emit (il.Create (OpCodes.Cpblk));
+                        EmitValue(call.Arguments[0].Value, call.Arguments[0].Type);
+                        EmitValue(call.Arguments[1].Value, call.Arguments[1].Type);
+                        EmitValue(call.Arguments[2].Value, call.Arguments[2].Type);
+                        Emit(il.Create(OpCodes.Conv_U4));
+                        Emit(il.Create(OpCodes.Cpblk));
                         return;
                     // declare void @llvm.memmove.p0i8.p0i8.i64(i8* <dest>, i8* <src>,
                     //                                         i64 <len>, i1 <isvolatile>)
                     case "@llvm.memmove.p0i8.p0i8.i64" when call.Arguments.Length >= 3:
-                       EmitValue (call.Arguments[0].Value, call.Arguments[0].Type);
-                       EmitValue (call.Arguments[1].Value, call.Arguments[1].Type);
-                       EmitValue (call.Arguments[2].Value, call.Arguments[2].Type);
-                       Emit (il.Create (OpCodes.Call, compilation.GetSystemMethod (gv.Symbol)));
-                       return;
+                        EmitValue(call.Arguments[0].Value, call.Arguments[0].Type);
+                        EmitValue(call.Arguments[1].Value, call.Arguments[1].Type);
+                        EmitValue(call.Arguments[2].Value, call.Arguments[2].Type);
+                        Emit(il.Create(OpCodes.Call, compilation.GetSystemMethod(gv.Symbol)));
+                        return;
                     // declare void @llvm.memset.p0i8.i32(i8* <dest>, i8 <val>,
                     //                                    i32<len>, i1<isvolatile>)
                     case "@llvm.memset.p0i8.i32" when call.Arguments.Length >= 3:
-                        EmitValue (call.Arguments[0].Value, call.Arguments[0].Type);
-                        EmitValue (call.Arguments[1].Value, call.Arguments[1].Type);
-                        EmitValue (call.Arguments[2].Value, call.Arguments[2].Type);
-                        Emit (il.Create (OpCodes.Initblk));
+                        EmitValue(call.Arguments[0].Value, call.Arguments[0].Type);
+                        EmitValue(call.Arguments[1].Value, call.Arguments[1].Type);
+                        EmitValue(call.Arguments[2].Value, call.Arguments[2].Type);
+                        Emit(il.Create(OpCodes.Initblk));
                         return;
                     // declare void @llvm.memset.p0i8.i64 (i8 * < dest >, i8<val>,
                     //                                     i64<len>, i1<isvolatile>)
                     case "@llvm.memset.p0i8.i64" when call.Arguments.Length >= 3:
-                        EmitValue (call.Arguments[0].Value, call.Arguments[0].Type);
-                        EmitValue (call.Arguments[1].Value, call.Arguments[1].Type);
-                        EmitValue (call.Arguments[2].Value, call.Arguments[2].Type);
-                        Emit (il.Create (OpCodes.Conv_U4));
-                        Emit (il.Create (OpCodes.Initblk));
+                        EmitValue(call.Arguments[0].Value, call.Arguments[0].Type);
+                        EmitValue(call.Arguments[1].Value, call.Arguments[1].Type);
+                        EmitValue(call.Arguments[2].Value, call.Arguments[2].Type);
+                        Emit(il.Create(OpCodes.Conv_U4));
+                        Emit(il.Create(OpCodes.Initblk));
                         return;
                     case "@llvm.pow.f64":
-                        EmitValue (call.Arguments[0].Value, call.Arguments[0].Type);
-                        EmitValue (call.Arguments[1].Value, call.Arguments[1].Type);
-                        Emit (il.Create (OpCodes.Call, compilation.sysMathPowD));
+                        EmitValue(call.Arguments[0].Value, call.Arguments[0].Type);
+                        EmitValue(call.Arguments[1].Value, call.Arguments[1].Type);
+                        Emit(il.Create(OpCodes.Call, compilation.sysMathPowD));
                         return;
                     case "@llvm.smax.i8":
-                        EmitValue (call.Arguments[0].Value, call.Arguments[0].Type);
-                        EmitValue (call.Arguments[1].Value, call.Arguments[1].Type);
-                        Emit (il.Create (OpCodes.Call, compilation.sysMathMaxSByte));
+                        EmitValue(call.Arguments[0].Value, call.Arguments[0].Type);
+                        EmitValue(call.Arguments[1].Value, call.Arguments[1].Type);
+                        Emit(il.Create(OpCodes.Call, compilation.sysMathMaxSByte));
                         return;
                     case "@llvm.smax.i16":
-                        EmitValue (call.Arguments[0].Value, call.Arguments[0].Type);
-                        EmitValue (call.Arguments[1].Value, call.Arguments[1].Type);
-                        Emit (il.Create (OpCodes.Call, compilation.sysMathMaxInt16));
+                        EmitValue(call.Arguments[0].Value, call.Arguments[0].Type);
+                        EmitValue(call.Arguments[1].Value, call.Arguments[1].Type);
+                        Emit(il.Create(OpCodes.Call, compilation.sysMathMaxInt16));
                         return;
                     case "@llvm.smax.i32":
-                        EmitValue (call.Arguments[0].Value, call.Arguments[0].Type);
-                        EmitValue (call.Arguments[1].Value, call.Arguments[1].Type);
-                        Emit (il.Create (OpCodes.Call, compilation.sysMathMaxInt32));
+                        EmitValue(call.Arguments[0].Value, call.Arguments[0].Type);
+                        EmitValue(call.Arguments[1].Value, call.Arguments[1].Type);
+                        Emit(il.Create(OpCodes.Call, compilation.sysMathMaxInt32));
                         return;
                     case "@llvm.smax.i64":
-                        EmitValue (call.Arguments[0].Value, call.Arguments[0].Type);
-                        EmitValue (call.Arguments[1].Value, call.Arguments[1].Type);
-                        Emit (il.Create (OpCodes.Call, compilation.sysMathMaxInt64));
+                        EmitValue(call.Arguments[0].Value, call.Arguments[0].Type);
+                        EmitValue(call.Arguments[1].Value, call.Arguments[1].Type);
+                        Emit(il.Create(OpCodes.Call, compilation.sysMathMaxInt64));
                         return;
                     case "@llvm.sqrt.f64":
-                        EmitValue (call.Arguments[0].Value, call.Arguments[0].Type);
-                        Emit (il.Create (OpCodes.Call, compilation.sysMathSqrtD));
+                        EmitValue(call.Arguments[0].Value, call.Arguments[0].Type);
+                        Emit(il.Create(OpCodes.Call, compilation.sysMathSqrtD));
                         return;
                     case "@llvm.stackrestore":
-                        compilation.WarningMessage (module.SourceFilename, $"Stack restore is not supported in `{MangledName.Demangle (function.Symbol)}`");
+                        compilation.WarningMessage(module.SourceFilename, $"Stack restore is not supported in `{MangledName.Demangle(function.Symbol)}`");
                         return;
                     case "@llvm.stacksave":
-                        compilation.WarningMessage (module.SourceFilename, $"Stack save is not supported in `{MangledName.Demangle (function.Symbol)}`");
-                        Emit (il.Create (OpCodes.Ldc_I4_0));
-                        Emit (il.Create (OpCodes.Conv_U));
+                        compilation.WarningMessage(module.SourceFilename, $"Stack save is not supported in `{MangledName.Demangle(function.Symbol)}`");
+                        Emit(il.Create(OpCodes.Ldc_I4_0));
+                        Emit(il.Create(OpCodes.Conv_U));
                         return;
                     case "@llvm.trap":
-                        Emit (il.Create (OpCodes.Ldstr, "Trap"));
-                        Emit (il.Create (OpCodes.Newobj, compilation.sysExceptionCtor));
-                        Emit (il.Create (OpCodes.Throw));
+                        Emit(il.Create(OpCodes.Ldstr, "Trap"));
+                        Emit(il.Create(OpCodes.Newobj, compilation.sysExceptionCtor));
+                        Emit(il.Create(OpCodes.Throw));
                         return;
                     case "@llvm.umax.i8":
-                        EmitValue (call.Arguments[0].Value, call.Arguments[0].Type);
-                        EmitValue (call.Arguments[1].Value, call.Arguments[1].Type);
-                        Emit (il.Create (OpCodes.Call, compilation.sysMathMaxByte));
+                        EmitValue(call.Arguments[0].Value, call.Arguments[0].Type);
+                        EmitValue(call.Arguments[1].Value, call.Arguments[1].Type);
+                        Emit(il.Create(OpCodes.Call, compilation.sysMathMaxByte));
                         return;
                     case "@llvm.umax.i16":
-                        EmitValue (call.Arguments[0].Value, call.Arguments[0].Type);
-                        EmitValue (call.Arguments[1].Value, call.Arguments[1].Type);
-                        Emit (il.Create (OpCodes.Call, compilation.sysMathMaxUInt16));
+                        EmitValue(call.Arguments[0].Value, call.Arguments[0].Type);
+                        EmitValue(call.Arguments[1].Value, call.Arguments[1].Type);
+                        Emit(il.Create(OpCodes.Call, compilation.sysMathMaxUInt16));
                         return;
                     case "@llvm.umax.i32":
-                        EmitValue (call.Arguments[0].Value, call.Arguments[0].Type);
-                        EmitValue (call.Arguments[1].Value, call.Arguments[1].Type);
-                        Emit (il.Create (OpCodes.Call, compilation.sysMathMaxUInt32));
+                        EmitValue(call.Arguments[0].Value, call.Arguments[0].Type);
+                        EmitValue(call.Arguments[1].Value, call.Arguments[1].Type);
+                        Emit(il.Create(OpCodes.Call, compilation.sysMathMaxUInt32));
                         return;
                     case "@llvm.umax.i64":
-                        EmitValue (call.Arguments[0].Value, call.Arguments[0].Type);
-                        EmitValue (call.Arguments[1].Value, call.Arguments[1].Type);
-                        Emit (il.Create (OpCodes.Call, compilation.sysMathMaxUInt64));
+                        EmitValue(call.Arguments[0].Value, call.Arguments[0].Type);
+                        EmitValue(call.Arguments[1].Value, call.Arguments[1].Type);
+                        Emit(il.Create(OpCodes.Call, compilation.sysMathMaxUInt64));
                         return;
                     case "@llvm.usub.sat.i64":
-                        EmitValue (call.Arguments[0].Value, call.Arguments[0].Type);
-                        EmitValue (call.Arguments[1].Value, call.Arguments[1].Type);
-                        Emit (il.Create (OpCodes.Sub));
-                        Emit (il.Create (OpCodes.Ldc_I8, 0L));
-                        Emit (il.Create (OpCodes.Call, compilation.sysMathMaxInt64));
+                        EmitValue(call.Arguments[0].Value, call.Arguments[0].Type);
+                        EmitValue(call.Arguments[1].Value, call.Arguments[1].Type);
+                        Emit(il.Create(OpCodes.Sub));
+                        Emit(il.Create(OpCodes.Ldc_I8, 0L));
+                        Emit(il.Create(OpCodes.Call, compilation.sysMathMaxInt64));
                         return;
                     case "@llvm.va_start":
-                        EmitValue (call.Arguments[0].Value, call.Arguments[0].Type);
-                        Emit (il.Create (OpCodes.Ldarg, function.IRDefinition.Parameters.Length + (compilation.Options.Reentrant ? 0 : -1)));
-                        Emit (il.Create (OpCodes.Call, compilation.GetSystemMethod(gv.Symbol)));
+                        EmitValue(call.Arguments[0].Value, call.Arguments[0].Type);
+                        Emit(il.Create(OpCodes.Ldarg, function.IRDefinition.Parameters.Length + (compilation.Options.Reentrant ? 0 : -1)));
+                        Emit(il.Create(OpCodes.Call, compilation.GetSystemMethod(gv.Symbol)));
                         return;
                     case "@llvm.va_end":
-                        EmitValue (call.Arguments[0].Value, call.Arguments[0].Type);
-                        Emit (il.Create (OpCodes.Call, compilation.GetSystemMethod (gv.Symbol)));
+                        EmitValue(call.Arguments[0].Value, call.Arguments[0].Type);
+                        Emit(il.Create(OpCodes.Call, compilation.GetSystemMethod(gv.Symbol)));
                         return;
                     default:
-                        if (compilation.TryGetFunction (module, gv.Symbol, out var m)) {
+                        if (compilation.TryGetFunction(module, gv.Symbol, out var m))
+                        {
 
                             var ilParams = m.ILDefinition.Parameters;
                             var nps = ilParams.Count;
                             var hasVarArgs =
                                 nps > 0
                                 && ilParams[nps - 1].ParameterType.IsArray
-                                && ilParams[nps - 1].ParameterType.GetElementType ().FullName == "System.Object";
+                                && ilParams[nps - 1].ParameterType.GetElementType().FullName == "System.Object";
                             if (hasVarArgs)
                                 nps--;
-                            if (compilation.Options.Reentrant && nps > 0 && ilParams[0].ParameterType.IsPointer && ilParams[0].ParameterType == compilation.GetGlobalDataPointerType()) {
+                            if (compilation.Options.Reentrant && nps > 0 && ilParams[0].ParameterType.IsPointer && ilParams[0].ParameterType == compilation.GetGlobalDataPointerType())
+                            {
                                 nps--;
-                                EmitReentrantContext ();
+                                EmitReentrantContext();
                             }
-                            if (call.Arguments.Length < nps) {
-                                throw new InvalidOperationException ($"Too few arguments to {function.IRDefinition.Symbol}");
+                            if (call.Arguments.Length < nps)
+                            {
+                                throw new InvalidOperationException($"Too few arguments to {function.IRDefinition.Symbol}");
                             }
 
-                            for (var i = 0; i < nps; i++) {
+                            for (var i = 0; i < nps; i++)
+                            {
                                 var a = call.Arguments[i];
-                                EmitValue (a.Value, a.Type);
+                                EmitValue(a.Value, a.Type);
                             }
-                            if (hasVarArgs) {
-                                EmitVarArgs (call.Arguments, nps);
+                            if (hasVarArgs)
+                            {
+                                EmitVarArgs(call.Arguments, nps);
                             }
 
-                            Emit (il.Create (OpCodes.Call, m.ILDefinition));
+                            Emit(il.Create(OpCodes.Call, m.ILDefinition));
 
                             return;
                         }
-                        else {
+                        else
+                        {
                             throw new Exception($"Cannot call undefined function `{call.Pointer}`.");
                         }
                 }
             }
-            else if (call.Pointer is IR.LocalValue lv) {
+            else if (call.Pointer is IR.LocalValue lv)
+            {
                 LType ltype;
-                if (function.ParamSyms.TryGetValue (lv.Symbol, out var p)) {
-                    ltype = function.IRDefinition.Parameters.First (x => x.Symbol == lv.Symbol).ParameterType;
+                if (function.ParamSyms.TryGetValue(lv.Symbol, out var p))
+                {
+                    ltype = function.IRDefinition.Parameters.First(x => x.Symbol == lv.Symbol).ParameterType;
                 }
-                else {
-                    var lva = function.IRDefinition.GetAssignment (lv);
-                    ltype = lva.Instruction.ResultType (function.IRModule);
+                else
+                {
+                    var lva = function.IRDefinition.GetAssignment(lv);
+                    ltype = lva.Instruction.ResultType(function.IRModule);
                 }
                 var ft = (FunctionType)((Types.PointerType)ltype).ElementType;
                 var ps = ft.ParameterTypes;
@@ -2723,27 +2932,33 @@ namespace Iril
                 var hasVarArgs = nps > 0 && (ps[nps - 1] is VarArgsType);
                 if (hasVarArgs)
                     nps--;
-                if (call.Arguments.Length < nps) {
-                    throw new InvalidOperationException ($"Too few arguments to {function.IRDefinition.Symbol}");
+                if (call.Arguments.Length < nps)
+                {
+                    throw new InvalidOperationException($"Too few arguments to {function.IRDefinition.Symbol}");
                 }
-                if (compilation.Options.Reentrant) {
-                    Emit (il.Create (OpCodes.Ldarg_0));
+                if (compilation.Options.Reentrant)
+                {
+                    Emit(il.Create(OpCodes.Ldarg_0));
                 }
-                for (var i = 0; i < nps; i++) {
+                for (var i = 0; i < nps; i++)
+                {
                     var a = call.Arguments[i];
-                    EmitValue (a.Value, a.Type);
+                    EmitValue(a.Value, a.Type);
                 }
-                if (hasVarArgs) {
-                    EmitVarArgs (call.Arguments, nps);
+                if (hasVarArgs)
+                {
+                    EmitVarArgs(call.Arguments, nps);
                 }
-                EmitValue (lv, ltype);
-                EmitCalli (CreateCallSite (ft));
+                EmitValue(lv, ltype);
+                EmitCalli(CreateCallSite(ft));
                 return;
             }
-            else if (call.Pointer is IR.InlineAssemblyValue asm) {
-                if (!string.IsNullOrWhiteSpace (asm.Assembly)) {
-                    var msg = new Message (MessageType.Warning, $"Native assembly not supported in `{function.Symbol}`");
-                    Messages.Add (msg);
+            else if (call.Pointer is IR.InlineAssemblyValue asm)
+            {
+                if (!string.IsNullOrWhiteSpace(asm.Assembly))
+                {
+                    var msg = new Message(MessageType.Warning, $"Native assembly not supported in `{function.Symbol}`");
+                    Messages.Add(msg);
                     msg.FilePath = module.SourceFilename;
                 }
                 return;
@@ -2754,25 +2969,26 @@ namespace Iril
         /// <summary>
         /// Emits a call to a function pointer. First calls LoadFunction to get the pointer.
         /// </summary>
-        void EmitCalli (CallSite site)
+        void EmitCalli(CallSite site)
         {
             // Convert the token to an actual function pointer
-            Emit (il.Create (OpCodes.Call, compilation.LoadFunction));
-            Emit (il.Create (OpCodes.Calli, site));
+            Emit(il.Create(OpCodes.Call, compilation.LoadFunction));
+            Emit(il.Create(OpCodes.Calli, site));
         }
 
-        void EmitReentrantContext ()
+        void EmitReentrantContext()
         {
             if (!compilation.Options.Reentrant)
                 return;
-            Emit (il.Create (OpCodes.Ldarg_0));
+            Emit(il.Create(OpCodes.Ldarg_0));
         }
 
-        void AddLocalDebugInfo (Block block, LocalSymbol local, SymbolTable<object> metadata)
+        void AddLocalDebugInfo(Block block, LocalSymbol local, SymbolTable<object> metadata)
         {
-            if (!blockLocalNames.TryGetValue (block.Symbol, out var names)) {
-                names = new SymbolTable<string> ();
-                blockLocalNames.Add (block.Symbol, names);
+            if (!blockLocalNames.TryGetValue(block.Symbol, out var names))
+            {
+                names = new SymbolTable<string>();
+                blockLocalNames.Add(block.Symbol, names);
             }
             names[local] = metadata[Symbol.Name].ToString();
         }
@@ -2788,9 +3004,9 @@ namespace Iril
                 var a = arguments[numFixedArgs + i];
                 Emit(il.Create(OpCodes.Ldc_I4, i));
                 EmitValue(a.Value, a.Type);
-                
-                EmitBox (a.Type);
-                Emit (il.Create(OpCodes.Stelem_Any, compilation.sysObj));
+
+                EmitBox(a.Type);
+                Emit(il.Create(OpCodes.Stelem_Any, compilation.sysObj));
             }
         }
 
@@ -2871,9 +3087,10 @@ namespace Iril
         CallSite CreateCallSite(FunctionType ft)
         {
             var c = new CallSite(compilation.GetClrType(ft.ReturnType, module: module));
-            if (compilation.Options.Reentrant) {
-                var pd = new ParameterDefinition(compilation.GetGlobalDataPointerType ());
-                c.Parameters.Add (pd);
+            if (compilation.Options.Reentrant)
+            {
+                var pd = new ParameterDefinition(compilation.GetGlobalDataPointerType());
+                c.Parameters.Add(pd);
             }
             foreach (var p in ft.ParameterTypes)
             {
