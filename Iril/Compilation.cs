@@ -264,7 +264,7 @@ namespace Iril
             this.options = options;
             Modules = options.Modules;
             AssemblyName = options.AssemblyName;
-            SystemAssemblyPath = typeof(object).Assembly.Location;
+            SystemAssemblyPath = FindSystemAssemblyPath();
             var version = new Version(1, 0);
             var asmName = new AssemblyNameDefinition(Path.GetFileNameWithoutExtension(AssemblyName), version);
             var modName = AssemblyName;
@@ -340,10 +340,46 @@ namespace Iril
             }
         }
 
+        // Output assemblies always target netstandard2.0, regardless of which .NET runtime
+        // is executing Iril, by resolving netstandard.dll from the NETStandard.Library
+        // NuGet package instead of from the running CLR's own (2.1+) netstandard.dll.
+        static string FindSystemAssemblyPath()
+        {
+            var packagesRoot = Environment.GetEnvironmentVariable("NUGET_PACKAGES");
+            if (string.IsNullOrEmpty(packagesRoot))
+            {
+                var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+                packagesRoot = Path.Combine(userProfile, ".nuget", "packages");
+            }
+
+            var netstandardLibraryDir = Path.Combine(packagesRoot, "netstandard.library");
+            if (Directory.Exists(netstandardLibraryDir))
+            {
+                var versionDirs =
+                    from dir in Directory.GetDirectories(netstandardLibraryDir)
+                    let version = Version.TryParse(Path.GetFileName(dir), out var v) ? v : null
+                    where version != null && version.Major == 2 && version.Minor == 0
+                    orderby version descending
+                    select dir;
+
+                foreach (var dir in versionDirs)
+                {
+                    var candidate = Path.Combine(dir, "build", "netstandard2.0", "ref", "netstandard.dll");
+                    if (File.Exists(candidate))
+                        return candidate;
+                }
+            }
+
+            throw new FileNotFoundException(
+                $"Could not find netstandard.dll under `{netstandardLibraryDir}`. " +
+                "Restore any netstandard2.0 project (e.g. `dotnet restore` one referencing " +
+                "`NETStandard.Library` 2.0.3) to populate the NuGet cache, then run Iril again.");
+        }
+
         void FindSystemTypes()
         {
             var dir = Path.GetDirectoryName(SystemAssemblyPath);
-            var netstdPath = Path.Combine(dir, "netstandard.dll");
+            var netstdPath = SystemAssemblyPath;
 
             resolver.Directories.Add(dir);
             var rps = new ReaderParameters(ReadingMode.Deferred)
@@ -475,16 +511,15 @@ namespace Iril
 
         TypeReference Import(string name)
         {
-            var types = sysAsm.MainModule.ExportedTypes;
             var scope = sysAsm.MainModule.Types.First().Scope;
-            var et = types.FirstOrDefault(x =>
-                x.FullName == name);
-            if (et == null)
+            // netstandard2.0 ref assembly declares types directly; a runtime-loaded netstandard.dll forwards via ExportedTypes.
+            var rt = sysAsm.MainModule.GetType(name)
+                ?? sysAsm.MainModule.ExportedTypes.FirstOrDefault(x => x.FullName == name)?.Resolve();
+            if (rt == null)
             {
                 throw new Exception($"Cannot find imported type `{name}`");
             }
-            var rt = et.Resolve();
-            var t = new TypeReference(et.Namespace, et.Name, sysAsm.MainModule, scope)
+            var t = new TypeReference(rt.Namespace, rt.Name, sysAsm.MainModule, scope)
             {
                 IsValueType = rt.IsValueType,
             };
