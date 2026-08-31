@@ -523,6 +523,10 @@ define_header
     {
         $$ = Tuple.Create ($2, $4);
     }
+    | DEFINE define_header_attributes visibility_style calling_convention return_type
+    {
+        $$ = Tuple.Create ($2, $5);
+    }
     | DEFINE define_header_attributes parameter_attributes return_type
     {
         $$ = Tuple.Create ($2, $4);
@@ -578,6 +582,18 @@ function_declaration
         $$ = new FunctionDeclaration ((LType)$3, (GlobalSymbol)$4, (IEnumerable<Parameter>)$5);
     }
     | declare_head NOALIAS parameter_attributes return_type GLOBAL_SYMBOL parameters declare_tail
+    {
+        $$ = new FunctionDeclaration ((LType)$4, (GlobalSymbol)$5, (IEnumerable<Parameter>)$6);
+    }
+    | declare_head calling_convention return_type GLOBAL_SYMBOL parameters
+    {
+        $$ = new FunctionDeclaration ((LType)$3, (GlobalSymbol)$4, (IEnumerable<Parameter>)$5);
+    }
+    | declare_head calling_convention return_type GLOBAL_SYMBOL parameters declare_tail
+    {
+        $$ = new FunctionDeclaration ((LType)$3, (GlobalSymbol)$4, (IEnumerable<Parameter>)$5);
+    }
+    | declare_head calling_convention parameter_attributes return_type GLOBAL_SYMBOL parameters declare_tail
     {
         $$ = new FunctionDeclaration ((LType)$4, (GlobalSymbol)$5, (IEnumerable<Parameter>)$6);
     }
