@@ -42,6 +42,10 @@ namespace Iril.IR
                     bs.Add (b.WithSymbol (s));
                     implicitLocalCounter++;
                 }
+                else {
+                    // Explicitly named/numbered block (e.g. `entry:`): keep it as-is.
+                    bs.Add (b);
+                }
                 foreach (var a in b.AllAssignments) {
                     if (a.HasResult && a.Result.HasNumericValue) {
                         implicitLocalCounter = a.Result.NumericValue + 1;
@@ -112,6 +116,7 @@ namespace Iril.IR
     [Flags]
     public enum ParameterAttributes
     {
+        None            = 0,
         NonNull         = 1 << 0,
         NoCapture       = 1 << 1,
         WriteOnly       = 1 << 2,

@@ -42,6 +42,7 @@ namespace Iril.IR
 %token PHI SELECT CALL TAIL VA_ARG ASM SIDEEFFECT
 %token LANDINGPAD CATCH CATCHPAD CLEANUPPAD
 %token NOUNDEF IMMARG CAPTURES
+%token SWIFTCC SWIFTTAILCC SWIFTSELF SWIFTERROR SWIFTASYNC
 %token ATOMIC MONOTONIC
 
 %start module
@@ -124,6 +125,27 @@ global_variable
     {
         $$ = new GlobalVariable ((GlobalSymbol)$1, (LType)$5, (Value)$6, isPrivate: false, isExternal: false, isConstant: (bool)$4);
     }
+    /* external globals: never have an initializer (see external_linkage) */
+    | GLOBAL_SYMBOL '=' external_linkage global_kind type
+    {
+        $$ = new GlobalVariable ((GlobalSymbol)$1, (LType)$5, null, isPrivate: false, isExternal: true, isConstant: (bool)$4);
+    }
+    | GLOBAL_SYMBOL '=' external_linkage global_kind type ',' ALIGN INTEGER
+    {
+        $$ = new GlobalVariable ((GlobalSymbol)$1, (LType)$5, null, isPrivate: false, isExternal: true, isConstant: (bool)$4);
+    }
+    | GLOBAL_SYMBOL '=' external_linkage function_addr global_kind type
+    {
+        $$ = new GlobalVariable ((GlobalSymbol)$1, (LType)$6, null, isPrivate: false, isExternal: true, isConstant: (bool)$5);
+    }
+    | GLOBAL_SYMBOL '=' external_linkage function_addr global_kind type ',' ALIGN INTEGER
+    {
+        $$ = new GlobalVariable ((GlobalSymbol)$1, (LType)$6, null, isPrivate: false, isExternal: true, isConstant: (bool)$5);
+    }
+    | GLOBAL_SYMBOL '=' external_linkage visibility_style global_kind type
+    {
+        $$ = new GlobalVariable ((GlobalSymbol)$1, (LType)$6, null, isPrivate: false, isExternal: true, isConstant: (bool)$5);
+    }
     | GLOBAL_SYMBOL '=' linkage visibility_style global_kind type
     {
         $$ = new GlobalVariable ((GlobalSymbol)$1, (LType)$6, null, isPrivate: false, isExternal: (bool)$3, isConstant: (bool)$3);
@@ -168,6 +190,23 @@ global_variable
     {
         $$ = new GlobalVariable ((GlobalSymbol)$1, (LType)$6, (Value)$7, isPrivate: (bool)$3, isExternal: false, isConstant: (bool)$5);
     }
+    /* visibility (e.g. `private`) without an address modifier, with optional section/align */
+    | GLOBAL_SYMBOL '=' visibility global_kind type value
+    {
+        $$ = new GlobalVariable ((GlobalSymbol)$1, (LType)$5, (Value)$6, isPrivate: (bool)$3, isExternal: false, isConstant: (bool)$4);
+    }
+    | GLOBAL_SYMBOL '=' visibility global_kind type value ',' ALIGN INTEGER
+    {
+        $$ = new GlobalVariable ((GlobalSymbol)$1, (LType)$5, (Value)$6, isPrivate: (bool)$3, isExternal: false, isConstant: (bool)$4);
+    }
+    | GLOBAL_SYMBOL '=' visibility global_kind type value ',' SECTION STRING
+    {
+        $$ = new GlobalVariable ((GlobalSymbol)$1, (LType)$5, (Value)$6, isPrivate: (bool)$3, isExternal: false, isConstant: (bool)$4);
+    }
+    | GLOBAL_SYMBOL '=' visibility global_kind type value ',' SECTION STRING ',' ALIGN INTEGER
+    {
+        $$ = new GlobalVariable ((GlobalSymbol)$1, (LType)$5, (Value)$6, isPrivate: (bool)$3, isExternal: false, isConstant: (bool)$4);
+    }
     | GLOBAL_SYMBOL '=' linkage function_addr global_kind type ',' ALIGN INTEGER
     {
         $$ = new GlobalVariable ((GlobalSymbol)$1, (LType)$6, null, isPrivate: false, isExternal: (bool)$3, isConstant: (bool)$5);
@@ -203,9 +242,16 @@ global_kind
     | CONSTANT { $$ = true; }
     ;
     
+/* `external` linkage never carries an initializer. Keeping it out of `linkage`
+   (which feeds the initializer-bearing global rules) stops the parser from
+   greedily reading the next definition's symbol as this global's value, e.g.
+   `@x = external global i64` immediately followed by `@y = ...`. */
+external_linkage
+    : EXTERNAL { $$ = true; }
+    ;
+
 linkage
-    : EXTERNAL             { $$ = true; }
-    | AVAILABLE_EXTERNALLY { $$ = true; }
+    : AVAILABLE_EXTERNALLY { $$ = true; }
     | INTERNAL             { $$ = false; }
     | LINKONCE             { $$ = true; }
     | LINKONCE_ODR         { $$ = true; }
@@ -598,6 +644,9 @@ parameter_attribute
     : NONNULL   { $$ = ParameterAttributes.NonNull; }
     | NOCAPTURE { $$ = ParameterAttributes.NoCapture; }
     | CAPTURES '(' capture_components ')' { $$ = ParameterAttributes.NoCapture; }
+    | SWIFTSELF { $$ = ParameterAttributes.None; }
+    | SWIFTERROR { $$ = ParameterAttributes.None; }
+    | SWIFTASYNC { $$ = ParameterAttributes.None; }
     | NOUNDEF   { $$ = ParameterAttributes.NoUndef; }
     | IMMARG    { $$ = ParameterAttributes.ImmediateArgument; }
     | READONLY  { $$ = ParameterAttributes.ReadOnly; }
@@ -851,6 +900,12 @@ blocks
     {
         $$ = $3;
     }
+    | SYMBOL ':' block
+    {
+        // Named basic-block label (e.g. `entry:`). Record it as %<name> so
+        // `br label %<name>` targets resolve to this block.
+        $$ = ((Block)$3).WithSymbol ((LocalSymbol)Symbol.Intern ("%" + ((Symbol)$1).Text));
+    }
     | block
     {
         $$ = $1;
@@ -1049,6 +1104,8 @@ wrapping
     
 calling_convention
     : FASTCC
+    | SWIFTCC
+    | SWIFTTAILCC
     ;
     
 atomic_constraint

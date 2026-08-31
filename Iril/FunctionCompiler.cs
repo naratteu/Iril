@@ -782,6 +782,8 @@ namespace Iril
         void FindSetjmps()
         {
             var blocks = function.IRDefinition.Blocks;
+            if (blocks.Length == 0)
+                return;
             var blockIndex = new SymbolTable<Block>();
             foreach (var b in blocks)
                 blockIndex[b.Symbol] = b;
