@@ -91,7 +91,7 @@ namespace Iril
                     });
                     break;
                 case IR.GetElementPointerValue gep:
-                    EmitGetElementPointer(gep.Pointer, gep.Indices);
+                    EmitGetElementPointer(gep.Pointer, gep.Indices, gep.Type);
                     break;
                 case IR.GlobalValue g:
                     if (compilation.TryGetFunction(module, g.Symbol, out var ff))
@@ -386,14 +386,21 @@ namespace Iril
             }
         }
 
-        protected void EmitGetElementPointer(IR.TypedValue pointer, IR.TypedValue[] indices)
+        protected void EmitGetElementPointer(IR.TypedValue pointer, IR.TypedValue[] indices, LType sourceElementType = null)
         {
             EmitTypedValue(pointer);
-            if (TryEmitConstantGetElementPointer(pointer, indices))
+            if (TryEmitConstantGetElementPointer(pointer, indices, sourceElementType))
             {
                 return;
             }
             var t = pointer.Type;
+            // LLVM 15+ opaque pointers carry no element type; the getelementptr instruction
+            // supplies the source element type explicitly. Walk over that instead of the
+            // pointer's (i8) placeholder element type.
+            if (sourceElementType != null && t is Types.PointerType spt)
+            {
+                t = new Types.PointerType(sourceElementType, spt.AddressSpace);
+            }
             var n = indices.Length;
             for (var i = 0; i < n; i++)
             {
@@ -538,9 +545,13 @@ namespace Iril
             }
         }
 
-        bool TryEmitConstantGetElementPointer(IR.TypedValue pointer, IR.TypedValue[] indices)
+        bool TryEmitConstantGetElementPointer(IR.TypedValue pointer, IR.TypedValue[] indices, LType sourceElementType = null)
         {
             var t = pointer.Type;
+            if (sourceElementType != null && t is Types.PointerType spt)
+            {
+                t = new Types.PointerType(sourceElementType, spt.AddressSpace);
+            }
             var n = indices.Length;
             long offset = 0L;
             for (var i = 0; i < n; i++)

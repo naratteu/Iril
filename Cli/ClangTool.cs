@@ -32,8 +32,9 @@ namespace Cli
 
             var args = new List<string> {
                 "-g", "-O0", "-S", "-emit-llvm", "-frtti"
-                // -O0 prevents: relative lookup tables, freeze instruction, dereferenceable_or_null
-                // which are LLVM 14 features that Iril's IR parser doesn't support yet
+                // -O0 keeps the emitted IR simple: it avoids optimization-only constructs
+                // (relative lookup tables, freeze, dereferenceable_or_null, memory(...) effects)
+                // that Iril's IR parser does not model.
             };
 
             var argsHasStd = false;
@@ -84,7 +85,7 @@ namespace Cli
 
             var outFiles = new List<string>();
 
-            var clangResult = clangFileCount > 0 ? Run(buildDir, "clang-14", args.ToArray()) : 0;
+            var clangResult = clangFileCount > 0 ? Run(buildDir, ResolveClang(), args.ToArray()) : 0;
 
             if (clangResult == 0)
             {
@@ -103,6 +104,59 @@ namespace Cli
             }
 
             return outFiles;
+        }
+
+        static string resolvedClang;
+
+        /// <summary>
+        /// Picks a clang executable to invoke. Iril now understands LLVM 15+ opaque pointers,
+        /// so any modern clang works; the pinned "clang-14" is only a last-resort fallback.
+        /// Override with the IRIL_CLANG environment variable.
+        /// </summary>
+        static string ResolveClang()
+        {
+            if (resolvedClang != null)
+                return resolvedClang;
+
+            var fromEnv = Environment.GetEnvironmentVariable("IRIL_CLANG");
+            if (!string.IsNullOrWhiteSpace(fromEnv))
+                return resolvedClang = fromEnv;
+
+            // Prefer the unversioned `clang`, then recent versioned names, then the legacy pin.
+            var candidates = new[] { "clang", "clang-19", "clang-18", "clang-17", "clang-16", "clang-15", "clang-14" };
+            foreach (var c in candidates)
+            {
+                if (CanRun(c))
+                    return resolvedClang = c;
+            }
+            // Nothing detected: fall back to `clang` so the normal missing-tool error/instructions fire.
+            return resolvedClang = "clang";
+        }
+
+        static bool CanRun(string exe)
+        {
+            try
+            {
+                var proc = new System.Diagnostics.Process
+                {
+                    StartInfo = new System.Diagnostics.ProcessStartInfo
+                    {
+                        FileName = exe,
+                        Arguments = "--version",
+                        UseShellExecute = false,
+                        RedirectStandardOutput = true,
+                        RedirectStandardError = true,
+                        CreateNoWindow = true,
+                    }
+                };
+                proc.Start();
+                proc.WaitForExit(15 * 1000);
+                return proc.ExitCode == 0;
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         static string GetOutFilePath(string buildDir, string f)

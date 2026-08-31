@@ -19,7 +19,7 @@ namespace Iril.IR
 %token INTEGER HEX_INTEGER FLOAT_LITERAL STRING TRUE FALSE UNDEF VOID NULL LABEL X
 %token SOURCE_FILENAME TARGET DATALAYOUT TRIPLE
 %token GLOBAL_SYMBOL LOCAL_SYMBOL META_SYMBOL META_SYMBOL_DEF SYMBOL DISTINCT METADATA CONSTANT_BYTES SECTION
-%token TYPE HALF FLOAT DOUBLE X86_FP80 INTEGER_TYPE ZEROINITIALIZER OPAQUE
+%token TYPE HALF FLOAT DOUBLE X86_FP80 INTEGER_TYPE ZEROINITIALIZER OPAQUE PTR
 %token DEFINE DECLARE UNNAMED_ADDR LOCAL_UNNAMED_ADDR NOALIAS ELLIPSIS GLOBAL
 %token CONSTANT PRIVATE INTERNAL EXTERNAL LINKONCE LINKONCE_ODR WEAK WEAK_ODR APPENDING COMMON FASTCC SIGNEXT ZEROEXT VOLATILE RETURNED
 %token DEREFERENCEABLE AVAILABLE_EXTERNALLY PERSONALITY SRET CLEANUP EXTERNALLY_INITIALIZED
@@ -41,7 +41,7 @@ namespace Iril.IR
 %token FAST
 %token PHI SELECT CALL TAIL VA_ARG ASM SIDEEFFECT
 %token LANDINGPAD CATCH CATCHPAD CLEANUPPAD
-%token NOUNDEF IMMARG
+%token NOUNDEF IMMARG CAPTURES
 %token ATOMIC MONOTONIC
 
 %start module
@@ -94,6 +94,7 @@ module_part
         module.AddGlobalVariable(g);
     }
     | ATTRIBUTES ATTRIBUTE_GROUP_REF '=' '{' attributes '}'
+    | ATTRIBUTES ATTRIBUTE_GROUP_REF '=' '{' '}'
     | META_SYMBOL_DEF '=' '!' '{' '}'
     {
         module.Metadata[(Symbol)$1] = new List<object> (0);
@@ -390,6 +391,10 @@ type
     {
         $$ = new NamedType ((Symbol)$1);
     }
+    | PTR optional_addrspace
+    {
+        $$ = PointerType.OpaquePointer;
+    }
     | '<' INTEGER X type '>'
     {
         $$ = new VectorType ((int)(BigInteger)$2, (LType)$4);
@@ -592,6 +597,7 @@ parameter_attributes
 parameter_attribute
     : NONNULL   { $$ = ParameterAttributes.NonNull; }
     | NOCAPTURE { $$ = ParameterAttributes.NoCapture; }
+    | CAPTURES '(' capture_components ')' { $$ = ParameterAttributes.NoCapture; }
     | NOUNDEF   { $$ = ParameterAttributes.NoUndef; }
     | IMMARG    { $$ = ParameterAttributes.ImmediateArgument; }
     | READONLY  { $$ = ParameterAttributes.ReadOnly; }
@@ -615,6 +621,11 @@ parameter_attribute
     }
     ;
     
+capture_components
+    : SYMBOL
+    | capture_components ',' SYMBOL
+    ;
+
 function_addr_type
     : UNNAMED_ADDR
     | LOCAL_UNNAMED_ADDR
@@ -692,6 +703,10 @@ nonglobal_value
     | GETELEMENTPTR INBOUNDS '(' type ',' typed_value ',' element_indices ')'
     {
         $$ = new GetElementPointerValue ((LType)$4, (TypedValue)$6, (List<TypedValue>)$8);
+    }
+    | GETELEMENTPTR INBOUNDS NUW '(' type ',' typed_value ',' element_indices ')'
+    {
+        $$ = new GetElementPointerValue ((LType)$5, (TypedValue)$7, (List<TypedValue>)$9);
     }
     | GETELEMENTPTR '(' type ',' typed_value ',' element_indices ')'
     {
@@ -959,6 +974,10 @@ metadata_value
     | GETELEMENTPTR INBOUNDS '(' type ',' typed_value ',' element_indices ')'
     {
         $$ = new GetElementPointerValue ((LType)$4, (TypedValue)$6, (List<TypedValue>)$8);
+    }
+    | GETELEMENTPTR INBOUNDS NUW '(' type ',' typed_value ',' element_indices ')'
+    {
+        $$ = new GetElementPointerValue ((LType)$5, (TypedValue)$7, (List<TypedValue>)$9);
     }
     | BITCAST '(' typed_value TO type ')'
     {
@@ -1278,6 +1297,14 @@ instruction
         $$ = new GetElementPointerInstruction ((LType)$2, (TypedValue)$4, (List<TypedValue>)$6);
     }
     | GETELEMENTPTR INBOUNDS type ',' typed_value ',' element_indices
+    {
+        $$ = new GetElementPointerInstruction ((LType)$3, (TypedValue)$5, (List<TypedValue>)$7);
+    }
+    | GETELEMENTPTR INBOUNDS NUW type ',' typed_value ',' element_indices
+    {
+        $$ = new GetElementPointerInstruction ((LType)$4, (TypedValue)$6, (List<TypedValue>)$8);
+    }
+    | GETELEMENTPTR NUW type ',' typed_value ',' element_indices
     {
         $$ = new GetElementPointerInstruction ((LType)$3, (TypedValue)$5, (List<TypedValue>)$7);
     }
