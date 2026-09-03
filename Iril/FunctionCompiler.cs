@@ -720,6 +720,8 @@ namespace Iril
         void FindSetjmps ()
         {
             var blocks = function.IRDefinition.Blocks;
+            if (blocks.Length == 0)
+                return;
             var blockIndex = new SymbolTable<Block> ();
             foreach (var b in blocks)
                 blockIndex[b.Symbol] = b;
@@ -1240,7 +1242,7 @@ namespace Iril
                     }
                     break;
                 case IR.GetElementPointerInstruction gep:
-                    EmitGetElementPointer(gep.Pointer, gep.Indices);
+                    EmitGetElementPointer(gep.Pointer, gep.Indices, gep.Type);
                     break;
                 case IR.IcmpInstruction icmp:
                     EmitIcmp(icmp);
@@ -2049,11 +2051,10 @@ namespace Iril
                     && gep.Indices.Length == 2
                     && gep.Indices[0].Value is IR.Constant ptrConst && ptrConst.Int32Value == 0
                     && gep.Indices[1].Value is IR.Constant indexConst
-                    && gep.Pointer.Type is Types.PointerType gepPointerType
-                    && gepPointerType.ElementType.Resolve(function.IRModule) is LiteralStructureType structType)
+                    && gep.Type.Resolve(function.IRModule) is LiteralStructureType structType)
                 {
 
-                    var td = compilation.GetClrType(gepPointerType.ElementType, module: module).Resolve();
+                    var td = compilation.GetClrType(gep.Type, module: module).Resolve();
                     var fieldIndex = indexConst.Int32Value;
                     if (fieldIndex < 0 || fieldIndex >= td.Fields.Count)
                         throw new IndexOutOfRangeException ($"Field #{fieldIndex} does not exist in {td.FullName} ({store})");
@@ -2089,11 +2090,10 @@ namespace Iril
                     && gep.Indices.Length == 2
                     && gep.Indices[0].Value is IR.Constant ptrConst && ptrConst.Int32Value == 0
                     && gep.Indices[1].Value is IR.Constant indexConst
-                    && gep.Pointer.Type is Types.PointerType gepPointerType
-                    && gepPointerType.ElementType.Resolve(function.IRModule) is LiteralStructureType structType)
+                    && gep.Type.Resolve(function.IRModule) is LiteralStructureType structType)
                 {
                     //Console.WriteLine (function.Symbol + " SHORTCUT " + load);
-                    var td = compilation.GetClrType(gepPointerType.ElementType, module: module).Resolve();
+                    var td = compilation.GetClrType(gep.Type, module: module).Resolve();
                     var fieldIndex = indexConst.Int32Value;
                     if (fieldIndex < 0 || fieldIndex >= td.Fields.Count)
                         throw new IndexOutOfRangeException ($"Field #{fieldIndex} does not exist in {td.FullName} ({load})");
@@ -2407,7 +2407,14 @@ namespace Iril
                     var lva = function.IRDefinition.GetAssignment (lv);
                     ltype = lva.Instruction.ResultType (function.IRModule);
                 }
-                var ft = (FunctionType)((Types.PointerType)ltype).ElementType;
+                FunctionType ft;
+                if (ltype is Types.PointerType lpt && lpt.ElementType is FunctionType ftFromPtr) {
+                    ft = ftFromPtr;
+                }
+                else {
+                    // Opaque pointer (LLVM 15+): reconstruct the callee signature from the call site.
+                    ft = new FunctionType (invoke.ReturnType, invoke.Arguments.Select (a => a.Type));
+                }
                 var ps = ft.ParameterTypes;
                 var nps = ps.Length;
                 var hasVarArgs = nps > 0 && (ps[nps - 1] is VarArgsType);
@@ -2480,10 +2487,20 @@ namespace Iril
             return compilation.GetClrType (irType, module: module).Resolve ();
         }
 
+        // LLVM 15+ mangles pointer-typed intrinsic overloads as ".p0" (opaque) where
+        // older LLVM used ".p0i8" (typed i8*). Canonicalize the opaque form back to
+        // ".p0i8" so the intrinsic dispatch cases below match both toolchains.
+        static string NormalizeIntrinsicName (string name)
+        {
+            if (name.IndexOf (".p0", StringComparison.Ordinal) < 0)
+                return name;
+            return System.Text.RegularExpressions.Regex.Replace (name, @"\.p0(?=\.|$)", ".p0i8");
+        }
+
         void EmitCall(IR.CallInstruction call, Block fromBlock)
         {
             if (call.Pointer is IR.GlobalValue gv) {
-                switch (gv.Symbol.Text) {
+                switch (NormalizeIntrinsicName (gv.Symbol.Text)) {
                     case "@llvm.ceil.f64":
                         EmitValue (call.Arguments[0].Value, call.Arguments[0].Type);
                         Emit (il.Create (OpCodes.Call, compilation.sysMathCeilD));
@@ -2717,7 +2734,15 @@ namespace Iril
                     var lva = function.IRDefinition.GetAssignment (lv);
                     ltype = lva.Instruction.ResultType (function.IRModule);
                 }
-                var ft = (FunctionType)((Types.PointerType)ltype).ElementType;
+                FunctionType ft;
+                if (ltype is Types.PointerType lpt && lpt.ElementType is FunctionType ftFromPtr) {
+                    ft = ftFromPtr;
+                }
+                else {
+                    // Opaque pointer (LLVM 15+): the callee signature is not carried by the
+                    // pointer type, so reconstruct it from the call site's return and argument types.
+                    ft = new FunctionType (call.ReturnType, call.Arguments.Select (a => a.Type));
+                }
                 var ps = ft.ParameterTypes;
                 var nps = ps.Length;
                 var hasVarArgs = nps > 0 && (ps[nps - 1] is VarArgsType);

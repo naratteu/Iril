@@ -19,7 +19,7 @@ namespace Iril.IR
 %token INTEGER HEX_INTEGER FLOAT_LITERAL STRING TRUE FALSE UNDEF VOID NULL LABEL X
 %token SOURCE_FILENAME TARGET DATALAYOUT TRIPLE
 %token GLOBAL_SYMBOL LOCAL_SYMBOL META_SYMBOL META_SYMBOL_DEF SYMBOL DISTINCT METADATA CONSTANT_BYTES SECTION
-%token TYPE HALF FLOAT DOUBLE X86_FP80 INTEGER_TYPE ZEROINITIALIZER OPAQUE
+%token TYPE HALF FLOAT DOUBLE X86_FP80 INTEGER_TYPE ZEROINITIALIZER OPAQUE PTR
 %token DEFINE DECLARE UNNAMED_ADDR LOCAL_UNNAMED_ADDR NOALIAS ELLIPSIS GLOBAL
 %token CONSTANT PRIVATE INTERNAL EXTERNAL LINKONCE LINKONCE_ODR WEAK WEAK_ODR APPENDING COMMON FASTCC SIGNEXT ZEROEXT VOLATILE RETURNED
 %token DEREFERENCEABLE AVAILABLE_EXTERNALLY PERSONALITY SRET CLEANUP EXTERNALLY_INITIALIZED
@@ -41,7 +41,8 @@ namespace Iril.IR
 %token FAST
 %token PHI SELECT CALL TAIL VA_ARG ASM SIDEEFFECT
 %token LANDINGPAD CATCH CATCHPAD CLEANUPPAD
-%token NOUNDEF IMMARG
+%token NOUNDEF IMMARG CAPTURES
+%token SWIFTCC SWIFTTAILCC SWIFTSELF SWIFTERROR SWIFTASYNC
 %token ATOMIC MONOTONIC
 
 %start module
@@ -94,6 +95,7 @@ module_part
         module.AddGlobalVariable(g);
     }
     | ATTRIBUTES ATTRIBUTE_GROUP_REF '=' '{' attributes '}'
+    | ATTRIBUTES ATTRIBUTE_GROUP_REF '=' '{' '}'
     | META_SYMBOL_DEF '=' '!' '{' '}'
     {
         module.Metadata[(Symbol)$1] = new List<object> (0);
@@ -122,6 +124,27 @@ global_variable
     : GLOBAL_SYMBOL '=' linkage global_kind type value
     {
         $$ = new GlobalVariable ((GlobalSymbol)$1, (LType)$5, (Value)$6, isPrivate: false, isExternal: false, isConstant: (bool)$4);
+    }
+    /* external globals: never have an initializer (see external_linkage) */
+    | GLOBAL_SYMBOL '=' external_linkage global_kind type
+    {
+        $$ = new GlobalVariable ((GlobalSymbol)$1, (LType)$5, null, isPrivate: false, isExternal: true, isConstant: (bool)$4);
+    }
+    | GLOBAL_SYMBOL '=' external_linkage global_kind type ',' ALIGN INTEGER
+    {
+        $$ = new GlobalVariable ((GlobalSymbol)$1, (LType)$5, null, isPrivate: false, isExternal: true, isConstant: (bool)$4);
+    }
+    | GLOBAL_SYMBOL '=' external_linkage function_addr global_kind type
+    {
+        $$ = new GlobalVariable ((GlobalSymbol)$1, (LType)$6, null, isPrivate: false, isExternal: true, isConstant: (bool)$5);
+    }
+    | GLOBAL_SYMBOL '=' external_linkage function_addr global_kind type ',' ALIGN INTEGER
+    {
+        $$ = new GlobalVariable ((GlobalSymbol)$1, (LType)$6, null, isPrivate: false, isExternal: true, isConstant: (bool)$5);
+    }
+    | GLOBAL_SYMBOL '=' external_linkage visibility_style global_kind type
+    {
+        $$ = new GlobalVariable ((GlobalSymbol)$1, (LType)$6, null, isPrivate: false, isExternal: true, isConstant: (bool)$5);
     }
     | GLOBAL_SYMBOL '=' linkage visibility_style global_kind type
     {
@@ -167,6 +190,23 @@ global_variable
     {
         $$ = new GlobalVariable ((GlobalSymbol)$1, (LType)$6, (Value)$7, isPrivate: (bool)$3, isExternal: false, isConstant: (bool)$5);
     }
+    /* visibility (e.g. `private`) without an address modifier, with optional section/align */
+    | GLOBAL_SYMBOL '=' visibility global_kind type value
+    {
+        $$ = new GlobalVariable ((GlobalSymbol)$1, (LType)$5, (Value)$6, isPrivate: (bool)$3, isExternal: false, isConstant: (bool)$4);
+    }
+    | GLOBAL_SYMBOL '=' visibility global_kind type value ',' ALIGN INTEGER
+    {
+        $$ = new GlobalVariable ((GlobalSymbol)$1, (LType)$5, (Value)$6, isPrivate: (bool)$3, isExternal: false, isConstant: (bool)$4);
+    }
+    | GLOBAL_SYMBOL '=' visibility global_kind type value ',' SECTION STRING
+    {
+        $$ = new GlobalVariable ((GlobalSymbol)$1, (LType)$5, (Value)$6, isPrivate: (bool)$3, isExternal: false, isConstant: (bool)$4);
+    }
+    | GLOBAL_SYMBOL '=' visibility global_kind type value ',' SECTION STRING ',' ALIGN INTEGER
+    {
+        $$ = new GlobalVariable ((GlobalSymbol)$1, (LType)$5, (Value)$6, isPrivate: (bool)$3, isExternal: false, isConstant: (bool)$4);
+    }
     | GLOBAL_SYMBOL '=' linkage function_addr global_kind type ',' ALIGN INTEGER
     {
         $$ = new GlobalVariable ((GlobalSymbol)$1, (LType)$6, null, isPrivate: false, isExternal: (bool)$3, isConstant: (bool)$5);
@@ -202,9 +242,16 @@ global_kind
     | CONSTANT { $$ = true; }
     ;
     
+/* `external` linkage never carries an initializer. Keeping it out of `linkage`
+   (which feeds the initializer-bearing global rules) stops the parser from
+   greedily reading the next definition's symbol as this global's value, e.g.
+   `@x = external global i64` immediately followed by `@y = ...`. */
+external_linkage
+    : EXTERNAL { $$ = true; }
+    ;
+
 linkage
-    : EXTERNAL             { $$ = true; }
-    | AVAILABLE_EXTERNALLY { $$ = true; }
+    : AVAILABLE_EXTERNALLY { $$ = true; }
     | INTERNAL             { $$ = false; }
     | LINKONCE             { $$ = true; }
     | LINKONCE_ODR         { $$ = true; }
@@ -390,6 +437,10 @@ type
     {
         $$ = new NamedType ((Symbol)$1);
     }
+    | PTR optional_addrspace
+    {
+        $$ = PointerType.OpaquePointer;
+    }
     | '<' INTEGER X type '>'
     {
         $$ = new VectorType ((int)(BigInteger)$2, (LType)$4);
@@ -472,6 +523,10 @@ define_header
     {
         $$ = Tuple.Create ($2, $4);
     }
+    | DEFINE define_header_attributes visibility_style calling_convention return_type
+    {
+        $$ = Tuple.Create ($2, $5);
+    }
     | DEFINE define_header_attributes parameter_attributes return_type
     {
         $$ = Tuple.Create ($2, $4);
@@ -527,6 +582,18 @@ function_declaration
         $$ = new FunctionDeclaration ((LType)$3, (GlobalSymbol)$4, (IEnumerable<Parameter>)$5);
     }
     | declare_head NOALIAS parameter_attributes return_type GLOBAL_SYMBOL parameters declare_tail
+    {
+        $$ = new FunctionDeclaration ((LType)$4, (GlobalSymbol)$5, (IEnumerable<Parameter>)$6);
+    }
+    | declare_head calling_convention return_type GLOBAL_SYMBOL parameters
+    {
+        $$ = new FunctionDeclaration ((LType)$3, (GlobalSymbol)$4, (IEnumerable<Parameter>)$5);
+    }
+    | declare_head calling_convention return_type GLOBAL_SYMBOL parameters declare_tail
+    {
+        $$ = new FunctionDeclaration ((LType)$3, (GlobalSymbol)$4, (IEnumerable<Parameter>)$5);
+    }
+    | declare_head calling_convention parameter_attributes return_type GLOBAL_SYMBOL parameters declare_tail
     {
         $$ = new FunctionDeclaration ((LType)$4, (GlobalSymbol)$5, (IEnumerable<Parameter>)$6);
     }
@@ -592,6 +659,10 @@ parameter_attributes
 parameter_attribute
     : NONNULL   { $$ = ParameterAttributes.NonNull; }
     | NOCAPTURE { $$ = ParameterAttributes.NoCapture; }
+    | CAPTURES '(' capture_components ')' { $$ = ParameterAttributes.NoCapture; }
+    | SWIFTSELF { $$ = ParameterAttributes.None; }
+    | SWIFTERROR { $$ = ParameterAttributes.None; }
+    | SWIFTASYNC { $$ = ParameterAttributes.None; }
     | NOUNDEF   { $$ = ParameterAttributes.NoUndef; }
     | IMMARG    { $$ = ParameterAttributes.ImmediateArgument; }
     | READONLY  { $$ = ParameterAttributes.ReadOnly; }
@@ -615,6 +686,11 @@ parameter_attribute
     }
     ;
     
+capture_components
+    : SYMBOL
+    | capture_components ',' SYMBOL
+    ;
+
 function_addr_type
     : UNNAMED_ADDR
     | LOCAL_UNNAMED_ADDR
@@ -692,6 +768,10 @@ nonglobal_value
     | GETELEMENTPTR INBOUNDS '(' type ',' typed_value ',' element_indices ')'
     {
         $$ = new GetElementPointerValue ((LType)$4, (TypedValue)$6, (List<TypedValue>)$8);
+    }
+    | GETELEMENTPTR INBOUNDS NUW '(' type ',' typed_value ',' element_indices ')'
+    {
+        $$ = new GetElementPointerValue ((LType)$5, (TypedValue)$7, (List<TypedValue>)$9);
     }
     | GETELEMENTPTR '(' type ',' typed_value ',' element_indices ')'
     {
@@ -836,6 +916,12 @@ blocks
     {
         $$ = $3;
     }
+    | SYMBOL ':' block
+    {
+        // Named basic-block label (e.g. `entry:`). Record it as %<name> so
+        // `br label %<name>` targets resolve to this block.
+        $$ = ((Block)$3).WithSymbol ((LocalSymbol)Symbol.Intern ("%" + ((Symbol)$1).Text));
+    }
     | block
     {
         $$ = $1;
@@ -960,6 +1046,10 @@ metadata_value
     {
         $$ = new GetElementPointerValue ((LType)$4, (TypedValue)$6, (List<TypedValue>)$8);
     }
+    | GETELEMENTPTR INBOUNDS NUW '(' type ',' typed_value ',' element_indices ')'
+    {
+        $$ = new GetElementPointerValue ((LType)$5, (TypedValue)$7, (List<TypedValue>)$9);
+    }
     | BITCAST '(' typed_value TO type ')'
     {
         $$ = new BitcastValue ((TypedValue)$3, (LType)$5);
@@ -1030,6 +1120,8 @@ wrapping
     
 calling_convention
     : FASTCC
+    | SWIFTCC
+    | SWIFTTAILCC
     ;
     
 atomic_constraint
@@ -1278,6 +1370,14 @@ instruction
         $$ = new GetElementPointerInstruction ((LType)$2, (TypedValue)$4, (List<TypedValue>)$6);
     }
     | GETELEMENTPTR INBOUNDS type ',' typed_value ',' element_indices
+    {
+        $$ = new GetElementPointerInstruction ((LType)$3, (TypedValue)$5, (List<TypedValue>)$7);
+    }
+    | GETELEMENTPTR INBOUNDS NUW type ',' typed_value ',' element_indices
+    {
+        $$ = new GetElementPointerInstruction ((LType)$4, (TypedValue)$6, (List<TypedValue>)$8);
+    }
+    | GETELEMENTPTR NUW type ',' typed_value ',' element_indices
     {
         $$ = new GetElementPointerInstruction ((LType)$3, (TypedValue)$5, (List<TypedValue>)$7);
     }
