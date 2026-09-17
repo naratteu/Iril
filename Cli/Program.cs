@@ -227,6 +227,9 @@ namespace Cli
             ll = System.Text.RegularExpressions.Regex.Replace (
                 ll, @"^(attributes #\d+ = \{)[^}]*(\})", "$1 $2",
                 System.Text.RegularExpressions.RegexOptions.Multiline);
+            ll = System.Text.RegularExpressions.Regex.Replace (
+                ll, @"^\s*#dbg_\w+\([^\n]*\)\s*$\n?", "",
+                System.Text.RegularExpressions.RegexOptions.Multiline);
             return ll;
         }
 
