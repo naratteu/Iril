@@ -181,6 +181,8 @@ namespace Iril
         {
             var r = (moduleMethodDefs.TryGetValue (module.Symbol, out var mdefs) && mdefs.TryGetValue (symbol, out function))
                     || externalMethodDefs.TryGetValue (symbol, out function);
+            if (!r && symbol.Text == "@24")
+                Console.Error.WriteLine ($"DEBUG {symbol}: module={module.Symbol}; module methods={mdefs?.Count}; externals={string.Join (",", externalMethodDefs.Keys.Take (20))}");
             if (r) {
                 function.ReferenceCount++;
 
@@ -1949,7 +1951,7 @@ namespace Iril
                     let d = em.ILDefinition
                     where d.Name == "main"
                     where d.IsStatic
-                    where d.Parameters.Count == 0 || d.Parameters.Count == 2
+                    where d.Parameters.Count == 0 || d.Parameters.Count == 2 || d.Parameters.Count == 3
                     orderby d.Parameters.Count descending
                     select em;
             var maind = q.FirstOrDefault ();
