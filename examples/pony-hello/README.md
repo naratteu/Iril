@@ -3,6 +3,8 @@
 Requires `ponyc`, `dotnet`, and `clang`.
 
 ```sh
+git clone --branch pony-llvm22-preprocess https://github.com/naratteu/Iril.git
+cd Iril/examples/pony-hello
 ./run.sh
 ```
 
