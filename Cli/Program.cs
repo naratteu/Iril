@@ -136,6 +136,7 @@ namespace Cli
                 Info ($"Parsing {llfiles.Count} files...");
                 var modules = llfiles.AsParallel ().Select (x => {
                     var code = File.ReadAllText (x);
+                    code = PreprocessLLVMIR (code);
                     return Module.Parse (code, x);
                 }).ToList ();
 
@@ -202,6 +203,31 @@ namespace Cli
                 Error (ex.ToString ());
                 return 2;
             }
+        }
+
+        // Iril does not use these LLVM optimizer contracts. Strip spellings
+        // newer than the parser before parsing the module.
+        static string PreprocessLLVMIR (string ll)
+        {
+            ll = System.Text.RegularExpressions.Regex.Replace (
+                ll, @"\b(noalias|noundef)\b", "");
+            ll = System.Text.RegularExpressions.Regex.Replace (
+                ll, @"\bdereferenceable_or_null\(\d+\)", "");
+            ll = System.Text.RegularExpressions.Regex.Replace (
+                ll, @"\s+captures\([^)]*\)", "");
+            ll = System.Text.RegularExpressions.Regex.Replace (
+                ll, @"\s+initializes\(\([^)]*\)\)", "");
+            ll = System.Text.RegularExpressions.Regex.Replace (
+                ll, @"\s+range\([^)]*\)", "");
+            ll = System.Text.RegularExpressions.Regex.Replace (
+                ll, @"\bpoison\b", "undef");
+            ll = System.Text.RegularExpressions.Regex.Replace (
+                ll, @"^(define)\s+private\s+", "$1 ",
+                System.Text.RegularExpressions.RegexOptions.Multiline);
+            ll = System.Text.RegularExpressions.Regex.Replace (
+                ll, @"^(attributes #\d+ = \{)[^}]*(\})", "$1 $2",
+                System.Text.RegularExpressions.RegexOptions.Multiline);
+            return ll;
         }
 
         public static void Info (string message)
